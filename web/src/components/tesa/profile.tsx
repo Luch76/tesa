@@ -50,6 +50,13 @@ export function ProfilePage() {
     job,
     fit: scoreJob(job, state.profile, state.evidence, state.sims),
   })).sort((a, b) => b.fit.score - a.fit.score);
+  const foundSkills = Object.entries(state.profile.skills)
+    .map(([skill, v]) => ({
+      skill,
+      level: skillLevel(state.profile, state.evidence, skill).level,
+      evidence: v.evidence,
+    }))
+    .sort((a, b) => b.level - a.level);
   async function acceptFile(f: File) {
     if (!/\.(pdf|docx|txt)$/i.test(f.name)) {
       toast.error(t("Choose a PDF, DOCX, or text file", "Elige un archivo PDF, DOCX o de texto"));
@@ -72,6 +79,7 @@ export function ProfilePage() {
     }
     uploading.current = saveToAccount(f);
     if (/\.txt$/i.test(f.name)) update({ resume: await f.text() });
+    void analyze(true);
   }
   async function saveToAccount(f: File): Promise<boolean> {
     try {
@@ -85,12 +93,12 @@ export function ProfilePage() {
       return false;
     }
   }
-  async function analyze() {
-    if (!state.resume.trim() && !file) return;
+  async function analyze(fromFile = !!file) {
+    if (!fromFile && !state.resume.trim()) return;
     setBusy(true);
     try {
       let profile;
-      if (file) {
+      if (fromFile) {
         // Analyze the file saved to the account, once its upload has finished.
         if (uploading.current && !(await uploading.current)) return;
         profile = await analyzeResume();
@@ -231,7 +239,10 @@ export function ProfilePage() {
                       <FileText />
                       {t("Try a sample resume", "Probar un ejemplo")}
                     </Button>
-                    <Button disabled={busy || (!state.resume.trim() && !file)} onClick={analyze}>
+                    <Button
+                      disabled={busy || (!state.resume.trim() && !file)}
+                      onClick={() => void analyze()}
+                    >
                       {busy ? <LoaderCircle className="animate-spin" /> : <ArrowUpRight />}
                       {busy
                         ? t("Analyzing…", "Analizando…")
@@ -402,6 +413,52 @@ export function ProfilePage() {
               "Tus fortalezas abren más puertas de las que imaginas.",
             )}
           />
+          <div className="section-heading">
+            <div>
+              <h2 id="found-skills-heading">
+                {t(
+                  "Skills we found in your resume",
+                  "Habilidades que encontramos en tu currículum",
+                )}
+              </h2>
+              <p>
+                {busy
+                  ? t("Reading your resume…", "Leyendo tu currículum…")
+                  : t(
+                      "Each one is quoted from your resume. Fit scores below are built from these.",
+                      "Cada una viene de tu currículum. Las afinidades de abajo se basan en ellas.",
+                    )}
+              </p>
+            </div>
+          </div>
+          {busy ? (
+            <p className="helper flex items-center gap-2" role="status">
+              <LoaderCircle size={13} className="animate-spin" />
+              {t("Analyzing your resume…", "Analizando tu currículum…")}
+            </p>
+          ) : foundSkills.length > 0 ? (
+            <div className="skill-cards found-skills">
+              {foundSkills.map(({ skill, level, evidence }) => (
+                <div key={skill} className="skill-card">
+                  <h3>{skill}</h3>
+                  <BloomBar level={level} />
+                  <p>“{evidence}”</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="helper">
+              {state.analyzed
+                ? t(
+                    "We didn’t find any of the job skills in this resume. Try adding more detail about what you did.",
+                    "No encontramos habilidades laborales en este currículum. Intenta agregar más detalle.",
+                  )
+                : t(
+                    "Add your resume and your skills will show up here.",
+                    "Agrega tu currículum y tus habilidades aparecerán aquí.",
+                  )}
+            </p>
+          )}
           <div className="section-heading">
             <div>
               <h2 id="top-matches-heading">
