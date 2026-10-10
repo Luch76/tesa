@@ -45,6 +45,8 @@ Routes:
 | `GET /api/resume/file` | required | Download the signed-in user's resume |
 | `DELETE /api/resume` | required | Remove the signed-in user's resume |
 | `POST /api/coach/turn` | required | AI tutor's next question and grade of the learner's answer, or the Practice Arena customer's reply |
+| `GET /api/coach/speech` | required | Whether the ElevenLabs voice is configured |
+| `POST /api/coach/speech` | required | The coach's reply as MP3 audio in the ElevenLabs voice |
 | `POST /api/coach/review` | required | AI soft-skill scores, summary and tips for a finished simulation |
 | `POST /api/resume/analyze` | required | Build a skills profile from the saved resume with AI (or from `{"text": ...}`) |
 | `GET /health` | public | Returns `{"status":"ok"}` |
@@ -62,6 +64,8 @@ The model is called through an OpenAI-compatible chat completions API at `AI_BAS
 ## AI coach
 
 The personal coach's Socratic tutor and the Practice Arena use the same model (`AI_MODEL`). In the tutor, the AI asks the next question and grades each answer with a Bloom level (1 to 6), a confidence and a quote from the answer; those grades are the evidence that raises skill levels and job-fit scores. In the Practice Arena, the AI plays the customer and, at the end, scores communication, empathy, problem solving, composure and professionalism from 1 to 5 with a summary and three tips. The server clamps every number to its range and replaces any quote that isn't word for word from the learner.
+
+Tap **Talk** for a hands-free voice conversation: the coach reads its question aloud, listens, and replies out loud after each pause. When `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` are set, replies are spoken in that [ElevenLabs](https://elevenlabs.io) voice (`ELEVENLABS_MODEL_ID`, default `eleven_flash_v2_5`); the key stays on the server, which returns the audio from `POST /api/coach/speech`. Without them, or if ElevenLabs fails, the browser's built-in voice is used.
 
 ## Login with Google
 
@@ -124,7 +128,8 @@ Configuration:
 - `GOOGLE_CALLBACK_URL` is a var in `cloudflare/wrangler.jsonc`. It must also be an authorized redirect URI on the Google OAuth client.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `JWT_SECRET` are Worker secrets. Update them with `npx wrangler deploy --secrets-file <file>` (or `npx wrangler secret put <NAME>`).
 - A running container keeps the environment it started with. The Worker restarts it when the configuration changes, but this can lag by a few minutes; at the latest it applies after the next idle sleep.
-- Resume analysis uses the Worker's AI binding: `AI_MODEL` (default `google/gemini-2.5-flash`) through the AI Gateway `AI_GATEWAY_ID` (default `default`), vars in `cloudflare/wrangler.jsonc`. Third-party models need AI Gateway [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/): the account must have AI Gateway credits loaded.
+- Resume analysis uses the Worker's AI binding: `AI_MODEL` (default `google/gemini-3.8-flash`) through the AI Gateway `AI_GATEWAY_ID` (default `default`), vars in `cloudflare/wrangler.jsonc`. Third-party models need AI Gateway [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/): the account must have AI Gateway credits loaded.
+- The coach's ElevenLabs voice: `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` are Worker secrets (optional), `ELEVENLABS_MODEL_ID` is a var.
 - Logs: `npx wrangler tail`.
 
 ## Configuration
@@ -141,7 +146,10 @@ Configuration:
 | `WEB_DIR` | `./web/dist/client` | The built web app to serve |
 | `AI_BASE_URL` | (unset) | OpenAI-compatible API for resume analysis; unset turns analysis off |
 | `AI_API_TOKEN` | (unset) | Bearer token for `AI_BASE_URL`, if it needs one |
-| `AI_MODEL` | `google/gemini-2.5-flash` | Model for resume analysis and the AI coach |
+| `AI_MODEL` | `google/gemini-3.8-flash` | Model for resume analysis and the AI coach |
+| `ELEVENLABS_API_KEY` | (unset) | ElevenLabs API key for the coach's voice; unset uses the browser voice |
+| `ELEVENLABS_VOICE_ID` | (unset) | ElevenLabs voice to speak in |
+| `ELEVENLABS_MODEL_ID` | `eleven_flash_v2_5` | ElevenLabs model |
 | `RESUME_STORAGE_URL` | (unset) | If set, store resumes through this HTTP object API instead of `UPLOAD_DIR` (used on Cloudflare) |
 
 Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.

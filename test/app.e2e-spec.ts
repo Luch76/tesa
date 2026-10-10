@@ -63,6 +63,47 @@ beforeAll(async () => {
 });
 afterAll(() => aiServer.close());
 
+/** A stand-in for ElevenLabs text-to-speech, recording the last request. */
+const voice = {
+  last: undefined as
+    | {
+        url?: string;
+        key?: string;
+        body?: { text?: string; model_id?: string };
+      }
+    | undefined,
+  status: 200,
+};
+let voiceServer: Server;
+beforeAll(async () => {
+  voiceServer = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c: Buffer) => (body += c.toString()));
+    req.on('end', () => {
+      voice.last = {
+        url: req.url,
+        key: req.headers['xi-api-key'] as string,
+        body: JSON.parse(body),
+      };
+      if (voice.status !== 200) {
+        res
+          .writeHead(voice.status, { 'Content-Type': 'application/json' })
+          .end(JSON.stringify({ detail: { message: 'Invalid API key' } }));
+        return;
+      }
+      res
+        .writeHead(200, { 'Content-Type': 'audio/mpeg' })
+        .end(Buffer.from('ID3fake-mp3'));
+    });
+  });
+  await new Promise<void>((done) => voiceServer.listen(0, '127.0.0.1', done));
+  process.env.ELEVENLABS_BASE_URL = `http://127.0.0.1:${(voiceServer.address() as AddressInfo).port}`;
+  process.env.ELEVENLABS_API_KEY = 'test-eleven-key';
+  process.env.ELEVENLABS_VOICE_ID = 'voice123';
+  process.env.ELEVENLABS_MODEL_ID = 'eleven_flash_v2_5';
+});
+afterAll(() => voiceServer.close());
+
 describe('App (e2e)', () => {
   let app: NestExpressApplication;
   let cookie: string;
@@ -294,6 +335,96 @@ describe('App (e2e)', () => {
       expect(res.body.scores.empathy).toBe(5);
       expect(res.body.quote).toBe('I will call you by 9 AM');
       expect(res.body.tips).toHaveLength(3);
+    });
+
+    describe('speech (ElevenLabs)', () => {
+      beforeEach(() => {
+        voice.status = 200;
+      });
+
+      it('reports that the voice is enabled', () => {
+        return request(app.getHttpServer())
+          .get('/api/coach/speech')
+          .set('Cookie', cookie)
+          .expect(200)
+          .expect({ enabled: true });
+      });
+
+      it('returns MP3 audio of the reply in the configured voice', async () => {
+        const res = await request(app.getHttpServer())
+          .post('/api/coach/speech')
+          .set('Cookie', cookie)
+          .send({ text: '  What would   you check first?  ' })
+          .expect(200)
+          .expect('Content-Type', 'audio/mpeg');
+        expect(Buffer.from(res.body as Buffer).toString()).toBe('ID3fake-mp3');
+        expect(voice.last).toEqual({
+          url: '/v1/text-to-speech/voice123?output_format=mp3_44100_128',
+          key: 'test-eleven-key',
+          body: {
+            text: 'What would you check first?',
+            model_id: 'eleven_flash_v2_5',
+          },
+        });
+      });
+
+      it('passes on ElevenLabs errors as 502', async () => {
+        voice.status = 401;
+        const res = await request(app.getHttpServer())
+          .post('/api/coach/speech')
+          .set('Cookie', cookie)
+          .send({ text: 'Hello' })
+          .expect(502);
+        expect(res.body.message).toBe(
+          'ElevenLabs returned an error (401): Invalid API key',
+        );
+      });
+
+      it('rejects empty and overly long text', async () => {
+        await request(app.getHttpServer())
+          .post('/api/coach/speech')
+          .set('Cookie', cookie)
+          .send({ text: '  ' })
+          .expect(400);
+        await request(app.getHttpServer())
+          .post('/api/coach/speech')
+          .set('Cookie', cookie)
+          .send({ text: 'x'.repeat(2001) })
+          .expect(400);
+      });
+
+      it('is off when no key is configured', async () => {
+        await app.close();
+        const saved = process.env.ELEVENLABS_API_KEY;
+        process.env.ELEVENLABS_API_KEY = '';
+        try {
+          const moduleFixture = await Test.createTestingModule({
+            imports: [AppModule],
+          }).compile();
+          app = moduleFixture.createNestApplication<NestExpressApplication>();
+          setupApp(app);
+          await app.init();
+          await request(app.getHttpServer())
+            .get('/api/coach/speech')
+            .set('Cookie', cookie)
+            .expect({ enabled: false });
+          await request(app.getHttpServer())
+            .post('/api/coach/speech')
+            .set('Cookie', cookie)
+            .send({ text: 'Hello' })
+            .expect(503);
+        } finally {
+          process.env.ELEVENLABS_API_KEY = saved;
+        }
+      });
+
+      it('requires a login', () => {
+        return request(app.getHttpServer())
+          .post('/api/coach/speech')
+          .set('Accept', 'application/json')
+          .send({ text: 'Hello' })
+          .expect(401);
+      });
     });
 
     it('requires the conversation to end with the learner', () => {

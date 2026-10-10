@@ -110,3 +110,22 @@ export const reviewSimulation = (req: Omit<CoachRequest, "mode">) =>
     quote: string;
     tips: string[];
   }>("/api/coach/review", req);
+
+/** Whether the server can speak replies in the ElevenLabs voice. */
+export const getSpeechConfig = () => request<{ enabled: boolean }>("/api/coach/speech");
+
+/** MP3 audio of `text` in the ElevenLabs voice. */
+export async function synthesizeSpeech(text: string, signal?: AbortSignal): Promise<Blob> {
+  const res = await fetch("/api/coach/speech", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", Accept: "audio/mpeg" },
+    body: JSON.stringify({ text }),
+    signal: signal ?? null,
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new ApiError(res.status, body?.message ?? res.statusText);
+  }
+  return res.blob();
+}

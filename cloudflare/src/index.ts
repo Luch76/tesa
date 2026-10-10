@@ -117,6 +117,9 @@ export class TesaApp extends Container<Env> {
       RESUME_STORAGE_URL: `http://${STORAGE_HOST}`,
       AI_BASE_URL: `http://${AI_HOST}/v1`,
       AI_MODEL: env.AI_MODEL,
+      ELEVENLABS_API_KEY: env.ELEVENLABS_API_KEY ?? '',
+      ELEVENLABS_VOICE_ID: env.ELEVENLABS_VOICE_ID ?? '',
+      ELEVENLABS_MODEL_ID: env.ELEVENLABS_MODEL_ID,
     };
   }
 

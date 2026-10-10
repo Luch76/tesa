@@ -33,7 +33,10 @@
     // AI Gateway to route model calls through, and the model the app asks for. On the AI
     // binding, Google models are named "google/<model>" (not "google-ai-studio/<model>").
     "AI_GATEWAY_ID": "default",
-    "AI_MODEL": "google/gemini-2.5-flash"
+    "AI_MODEL": "google/gemini-3.8-flash",
+    // ElevenLabs model for the coach's voice (key and voice ID are secrets).
+    "ELEVENLABS_MODEL_ID": "eleven_flash_v2_5"
   }
-  // Secrets (set with `wrangler secret put`): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET
+  // Secrets (set with `wrangler secret put`): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET,
+  // and optionally ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID
 }

@@ -6,7 +6,7 @@ export interface ChatMessage {
   content: string;
 }
 
-export const DEFAULT_AI_MODEL = 'google/gemini-2.5-flash';
+export const DEFAULT_AI_MODEL = 'google/gemini-3.8-flash';
 
 /**
  * Calls an OpenAI-compatible chat completions API.

@@ -20,7 +20,14 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { useTesa } from "@/lib/tesa/context";
 import { JOBS, BLOOM, SOFT, type Turn, type Job, type Simulation } from "@/lib/tesa/data";
 import { canEndSimulation, skillLevel } from "@/lib/tesa/scoring";
-import { coachTurn, reviewSimulation, type CoachRequest } from "@/lib/api/client";
+import {
+  coachTurn,
+  getSpeechConfig,
+  reviewSimulation,
+  synthesizeSpeech,
+  type CoachRequest,
+} from "@/lib/api/client";
+import { useQuery } from "@tanstack/react-query";
 import { JobSelector } from "./gap";
 import { PageHeading, Status } from "./shared";
 import { CoachAvatar } from "./coach-avatar";
@@ -61,6 +68,9 @@ function simulationOpening(job: Job, spanish: boolean) {
 }
 
 const READ_ALOUD_KEY = "tesa-read-aloud";
+/** A silent clip played on the Talk tap to unlock audio for the ElevenLabs voice. */
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 /** "Read replies aloud" is on unless the learner turned it off. */
 function readAloudPreference() {
   try {
@@ -112,6 +122,15 @@ export function LearningChat({
   const listenRef = useRef<() => void>(() => {});
   const silentRounds = useRef(0);
   const speechId = useRef(0);
+  // One audio element for the ElevenLabs voice, so a tap on Talk can unlock it for later replies.
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const { data: speechConfig } = useQuery({
+    queryKey: ["speech-config"],
+    queryFn: getSpeechConfig,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const cloudVoice = speechConfig?.enabled === true;
   const session = useRef("");
   const submitted = useRef("");
   const userCount = turns.filter((t) => t.role === "user").length;
@@ -157,8 +176,68 @@ export function LearningChat({
    * then calls `onDone` exactly once, even if the browser never reports the end of speech.
    */
   function say(reply: string, onDone?: () => void) {
+    if (!(read || talkingRef.current) || !reply.trim()) {
+      onDone?.();
+      return;
+    }
+    if (cloudVoice) sayWithElevenLabs(reply, onDone);
+    else sayWithBrowser(reply, onDone);
+  }
+  /** Plays the reply in the ElevenLabs voice; falls back to the browser voice if that fails. */
+  function sayWithElevenLabs(reply: string, onDone?: () => void) {
+    const id = ++speechId.current;
+    const player = (audio.current ??= new Audio());
+    const controller = new AbortController();
+    let finished = false;
+    let url = "";
+    const cleanup = () => {
+      window.clearTimeout(watchdog);
+      player.onended = player.onerror = player.onloadedmetadata = null;
+      if (url) URL.revokeObjectURL(url);
+    };
+    const done = () => {
+      if (finished || speechId.current !== id) return;
+      finished = true;
+      cleanup();
+      setSpeaking(false);
+      onDone?.();
+    };
+    const fallback = () => {
+      if (finished || speechId.current !== id) return;
+      finished = true;
+      cleanup();
+      sayWithBrowser(reply, onDone);
+    };
+    // Give the voice service a while to respond; once audio loads, wait for its length.
+    let watchdog = window.setTimeout(() => {
+      controller.abort();
+      fallback();
+    }, 20_000);
+    setSpeaking(true);
+    synthesizeSpeech(reply, controller.signal)
+      .then((blob) => {
+        if (finished || speechId.current !== id) return;
+        url = URL.createObjectURL(blob);
+        player.onloadedmetadata = () => {
+          window.clearTimeout(watchdog);
+          const seconds = Number.isFinite(player.duration) ? player.duration : 30;
+          watchdog = window.setTimeout(done, seconds * 1000 + 3000);
+        };
+        player.onended = done;
+        player.onerror = fallback;
+        player.src = url;
+        return player.play();
+      })
+      .catch(fallback);
+  }
+  /**
+   * The browser's built-in voice. Calls `onDone` exactly once, even if the browser never
+   * reports the end of speech.
+   */
+  function sayWithBrowser(reply: string, onDone?: () => void) {
     const synth = window.speechSynthesis;
-    if (!(read || talkingRef.current) || !synth || !reply.trim()) {
+    if (!synth) {
+      setSpeaking(false);
       onDone?.();
       return;
     }
@@ -292,8 +371,13 @@ export function LearningChat({
     talkingRef.current = true;
     setTalking(true);
     setText("");
-    // Read the coach's current question aloud first, then listen. Speaking within this
-    // tap also unlocks audio in browsers (Safari) that block speech started later on.
+    // Read the coach's current question aloud first, then listen. Starting playback within
+    // this tap also unlocks audio in browsers (Safari) that block sound started later on.
+    if (cloudVoice) {
+      const player = (audio.current ??= new Audio());
+      player.src = SILENT_WAV;
+      player.play().catch(() => undefined);
+    }
     const question = [...turns].reverse().find((turn) => turn.role === "assistant")?.text ?? "";
     say(question, () => {
       if (talkingRef.current) listenRef.current();
@@ -302,6 +386,7 @@ export function LearningChat({
   function endConversation() {
     talkingRef.current = false;
     speechId.current++;
+    audio.current?.pause();
     setTalking(false);
     setListening(false);
     rec.current?.abort?.();
@@ -555,6 +640,8 @@ export function LearningChat({
                       /* the preference just won't be remembered */
                     }
                     if (!e.target.checked) {
+                      speechId.current++;
+                      audio.current?.pause();
                       window.speechSynthesis?.cancel();
                       setSpeaking(false);
                     }
