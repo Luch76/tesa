@@ -119,7 +119,7 @@ export function SimulationsPage() {
         started ? (
           <>
             <div className="flex justify-between mb-5 items-center">
-              <span className="pill sample">{t("Scripted practice", "Práctica con guion")}</span>
+              <span className="pill sample">{t("AI practice", "Práctica con IA")}</span>
               {timerOn && (
                 <span className="font-mono text-xs text-sun">
                   <Clock3 size={12} className="inline mr-2" />

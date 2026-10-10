@@ -20,6 +20,7 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { useTesa } from "@/lib/tesa/context";
 import { JOBS, BLOOM, SOFT, type Turn, type Job, type Simulation } from "@/lib/tesa/data";
 import { canEndSimulation, skillLevel } from "@/lib/tesa/scoring";
+import { coachTurn, reviewSimulation, type CoachRequest } from "@/lib/api/client";
 import { JobSelector } from "./gap";
 import { PageHeading, Status } from "./shared";
 import { CoachAvatar } from "./coach-avatar";
@@ -38,12 +39,8 @@ type Recognition = {
 };
 
 function tutorOpening(skill: string, title: string, spanish: boolean) {
-  if (skill === "Insurance Verification")
-    return spanish
-      ? `Conectemos tu experiencia de recepción con ${title}. Un paciente llega para una resonancia: ¿qué datos revisarías primero para verificar su cobertura?`
-      : `Let’s connect your front-desk experience to ${title}. A patient arrives for an MRI. What information would you check first to verify their insurance coverage?`;
   return spanish
-    ? `Practiquemos ${skill} para ${title}. Piensa en una situación de tu trabajo: ¿cómo aplicarías esta habilidad y cuál sería tu primer paso?`
+    ? `Practiquemos ${skill} para ${title}. Piensa en una situación de trabajo realista: ¿cómo aplicarías esta habilidad y cuál sería tu primer paso?`
     : `Let’s practice ${skill} for ${title}. Think of a realistic workplace situation. How would you apply this skill, and what would you do first?`;
 }
 function simulationOpening(job: Job, spanish: boolean) {
@@ -79,7 +76,6 @@ export function LearningChat({
     [scored, setScored] = useState(false),
     [speaking, setSpeaking] = useState(false),
     [reacting, setReacting] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rec = useRef<Recognition | null>(null);
   const session = useRef("");
   const submitted = useRef("");
@@ -104,11 +100,11 @@ export function LearningChat({
       },
     ]);
     setScored(false);
+    setBusy(false);
     setText("");
     setSpeaking(false);
     setListening(false);
     return () => {
-      if (timer.current) clearTimeout(timer.current);
       rec.current?.stop();
       window.speechSynthesis?.cancel();
     };
@@ -123,7 +119,8 @@ export function LearningChat({
     window.speechSynthesis.speak(speech);
   }
   function stop() {
-    if (timer.current) clearTimeout(timer.current);
+    // A new session makes the pending AI reply be ignored when it arrives.
+    session.current = crypto.randomUUID();
     setBusy(false);
     setTurns((prev) => (prev.at(-1)?.role === "user" ? prev.slice(0, -1) : prev));
     setText(submitted.current);
@@ -175,106 +172,85 @@ export function LearningChat({
       toast.error(t("Could not start the microphone", "No se pudo iniciar el micrófono"));
     }
   }
-  function submit(answer: string) {
+  /** The conversation context the AI coach needs, with `turnsSoFar` as the transcript. */
+  function coachRequest(turnsSoFar: Turn[]): CoachRequest {
+    return {
+      mode: simulation ? "simulation" : "tutor",
+      language: es ? "es" : "en",
+      job: { title: job.title, employer: job.employer, sector: job.sector, scenario: job.scn },
+      ...(simulation ? {} : { skill, currentLevel: sl.level, targetLevel: target }),
+      turns: turnsSoFar.map(({ role, text }) => ({ role, text })),
+    };
+  }
+  async function submit(answer: string) {
     const value = answer.trim();
     if (!value || busy || scored) return;
     submitted.current = value;
+    const sessionId = session.current;
+    const history: Turn[] = [...turns, { role: "user", text: value }];
     setText("");
     setBusy(true);
-    setTurns((prev) => [...prev, { role: "user", text: value }]);
-    timer.current = setTimeout(() => {
-      const detailed = value.split(/\s+/).length >= 12;
-      const confidence = detailed ? 0.82 : 0.55;
-      const level = skill === "Insurance Verification" ? 3 : Math.min(6, Math.max(1, sl.level + 1));
-      const reply = simulation
-        ? userCount === 0
-          ? t(
-              "I appreciate you listening, but I still need a concrete solution. What can you offer me right now?",
-              "Aprecio que me escuche, pero necesito una solución concreta. ¿Qué puede ofrecerme ahora?",
-            )
-          : userCount === 1
-            ? t(
-                "That sounds more helpful. How will you make sure this actually happens, and when will you update me?",
-                "Eso suena mejor. ¿Cómo se asegurará de que se cumpla y cuándo me informará?",
-              )
-            : t(
-                "Thank you. Having a clear plan and a specific follow-up makes a difference. I’m willing to give this a chance.",
-                "Gracias. Tener un plan claro y un seguimiento concreto hace la diferencia. Estoy dispuesto a intentarlo.",
-              )
-        : !detailed
-          ? t(
-              "Let’s make that more specific. What would you check, why would you check it, and what would you do if something didn’t match?",
-              "Hagámoslo más específico. ¿Qué revisarías, por qué y qué harías si algo no coincide?",
-            )
-          : userCount === 0
-            ? t(
-                "Good—now consider that the plan is active, but the MRI needs prior authorization. What steps would you take before the appointment, and how would you explain them to the patient?",
-                "Bien. El plan está activo, pero la resonancia necesita autorización previa. ¿Qué pasos seguirías antes de la cita y cómo se lo explicarías al paciente?",
-              )
-            : t(
-                "You’ve connected the steps to the patient’s needs. If the insurer and patient give conflicting information, how would you verify the facts and prevent an unexpected bill?",
-                "Has conectado los pasos con las necesidades del paciente. Si hay información contradictoria, ¿cómo verificarías los hechos y evitarías una factura inesperada?",
-              );
-      setTurns((prev) => [
-        ...prev.slice(0, -1),
-        {
-          role: "user",
-          text: value,
-          level: simulation ? undefined : level,
-          confidence: simulation ? undefined : confidence,
-        },
-        { role: "assistant", text: reply, level: Math.min(6, level + 1) },
+    setTurns(history);
+    try {
+      const { reply, grade } = await coachTurn(coachRequest(history));
+      // Ignore replies to a conversation the learner has since restarted.
+      if (session.current !== sessionId) return;
+      setTurns([
+        ...history.slice(0, -1),
+        { role: "user", text: value, level: grade?.level, confidence: grade?.confidence },
+        { role: "assistant", text: reply, level: Math.min(6, (grade?.level ?? sl.level) + 1) },
       ]);
-      if (!simulation)
+      if (!simulation && grade)
         addEvidence({
           skill,
           job: job.id,
-          level,
-          confidence,
-          quote: value.split(/\s+/).slice(0, 15).join(" "),
+          level: grade.level,
+          confidence: grade.confidence,
+          quote: grade.quote,
           at: new Date().toISOString(),
-          session: session.current,
+          session: sessionId,
         });
-      setBusy(false);
       say(reply);
-    }, 950);
+    } catch (error) {
+      if (session.current !== sessionId) return;
+      // Put the answer back so the learner can send it again.
+      setTurns(turns);
+      setText(value);
+      toast.error(t("The coach couldn’t reply", "El coach no pudo responder"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      if (session.current === sessionId) setBusy(false);
+    }
   }
-  function finish() {
+  async function finish() {
     if (!canEndSimulation(turns) || busy || scored) return;
-    const sim: Simulation = {
-      job: job.id,
-      scores: {
-        communication: 4,
-        empathy: 4,
-        problem_solving: 4,
-        composure: 4,
-        professionalism: 4,
-      },
-      summary: t(
-        "Demonstrated calm, empathetic communication in a challenging workplace situation. Offered a clear resolution and a practical follow-up plan.",
-        "Demostró comunicación calmada y empática ante una situación difícil. Ofreció una solución clara y un plan de seguimiento práctico.",
-      ),
-      quote: turns.filter((t) => t.role === "user").at(-1)?.text ?? "",
-      tips: [
-        t(
-          "Acknowledge the impact before proposing a solution.",
-          "Reconoce el impacto antes de proponer una solución.",
-        ),
-        t(
-          "Give a concrete timeframe for the next update.",
-          "Da un plazo concreto para la próxima actualización.",
-        ),
-        t(
-          "Confirm that the customer is comfortable with the plan.",
-          "Confirma que el cliente esté de acuerdo con el plan.",
-        ),
-      ],
-      turns,
-      at: new Date().toISOString(),
-    };
-    addSimulation(sim);
-    setScored(true);
-    onFinish?.(sim);
+    const sessionId = session.current;
+    setBusy(true);
+    try {
+      const { mode: _mode, ...req } = coachRequest(turns);
+      const review = await reviewSimulation(req);
+      if (session.current !== sessionId) return;
+      const sim: Simulation = {
+        job: job.id,
+        scores: review.scores,
+        summary: review.summary,
+        quote: review.quote,
+        tips: review.tips,
+        turns,
+        at: new Date().toISOString(),
+      };
+      addSimulation(sim);
+      setScored(true);
+      onFinish?.(sim);
+    } catch (error) {
+      if (session.current !== sessionId) return;
+      toast.error(t("Couldn’t score this simulation", "No se pudo evaluar la simulación"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      if (session.current === sessionId) setBusy(false);
+    }
   }
   return (
     <>
@@ -301,7 +277,7 @@ export function LearningChat({
           variant="ghost"
           size="sm"
           onClick={() => {
-            if (timer.current) clearTimeout(timer.current);
+            session.current = crypto.randomUUID();
             setBusy(false);
             setTurns([
               {
@@ -311,7 +287,6 @@ export function LearningChat({
               },
             ]);
             setScored(false);
-            session.current = crypto.randomUUID();
           }}
         >
           <RotateCcw />
@@ -386,7 +361,7 @@ export function LearningChat({
                     <div
                       className={`grade ${Number(turn.confidence) < 0.7 ? "text-muted-foreground" : ""}`}
                     >
-                      {t("Demo grade", "Nota demo")} L{turn.level} {BLOOM[turn.level]} ·{" "}
+                      {t("AI grade", "Nota IA")} L{turn.level} {BLOOM[turn.level]} ·{" "}
                       {Math.round(Number(turn.confidence) * 100)}%{" "}
                       {Number(turn.confidence) >= 0.7 ? "✓" : ""}
                     </div>
@@ -468,8 +443,8 @@ export function LearningChat({
             </div>
             <p className="helper">
               {t(
-                "Scripted demo · grades and responses are illustrative, not independently verified.",
-                "Demo con guion · notas y respuestas ilustrativas, no verificadas de forma independiente.",
+                "AI coach powered by Gemini · grades are AI estimates.",
+                "Coach con IA de Gemini · las notas son estimaciones de la IA.",
               )}
             </p>
           </div>
@@ -513,8 +488,8 @@ export function LearningChat({
               </Button>
               <p className="helper">
                 {t(
-                  "Available after 2 learner replies. Demo result: 4/5 in each dimension.",
-                  "Disponible tras 2 respuestas. Resultado demo: 4/5 en cada dimensión.",
+                  "Available after 2 replies. The AI scores each dimension from 1 to 5.",
+                  "Disponible tras 2 respuestas. La IA evalúa cada dimensión del 1 al 5.",
                 )}
               </p>
             </>

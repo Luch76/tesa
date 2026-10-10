@@ -1,4 +1,4 @@
-import type { Profile } from "@/lib/tesa/data";
+import type { Profile, SoftKey } from "@/lib/tesa/data";
 
 /** Calls to the NestJS server that hosts this app (same origin; the session is an HTTP-only cookie). */
 
@@ -68,3 +68,45 @@ export function uploadResume(file: File): Promise<SavedResume> {
     (r) => r.resume,
   );
 }
+
+/** A practice conversation, as the coach endpoints expect it. */
+export interface CoachRequest {
+  mode: "tutor" | "simulation";
+  language: "en" | "es";
+  job: {
+    title: string;
+    employer: string;
+    sector: string;
+    scenario: { name: string; character: string; setting: string };
+  };
+  skill?: string;
+  currentLevel?: number;
+  targetLevel?: number;
+  turns: { role: "user" | "assistant"; text: string }[];
+}
+
+export interface CoachGrade {
+  level: number;
+  confidence: number;
+  quote: string;
+}
+
+const postJson = <T>(path: string, body: unknown) =>
+  request<T>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+/** The AI tutor's next question (with a grade of the learner's answer) or the simulated customer's reply. */
+export const coachTurn = (req: CoachRequest) =>
+  postJson<{ reply: string; grade?: CoachGrade }>("/api/coach/turn", req);
+
+/** AI scores, summary and tips for a finished Practice Arena simulation. */
+export const reviewSimulation = (req: Omit<CoachRequest, "mode">) =>
+  postJson<{
+    scores: Record<SoftKey, number>;
+    summary: string;
+    quote: string;
+    tips: string[];
+  }>("/api/coach/review", req);

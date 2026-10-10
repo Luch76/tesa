@@ -1,5 +1,5 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { AiClient } from './ai.client.js';
+import { AiClient } from '../ai/ai.client.js';
 import { parseModelJson, Profile, toProfile } from './profile.js';
 import { BLOOM, SKILLS } from './skills.js';
 

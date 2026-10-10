@@ -44,6 +44,8 @@ Routes:
 | `POST /api/resume` | required | Upload a resume (multipart field `resume`) |
 | `GET /api/resume/file` | required | Download the signed-in user's resume |
 | `DELETE /api/resume` | required | Remove the signed-in user's resume |
+| `POST /api/coach/turn` | required | AI tutor's next question and grade of the learner's answer, or the Practice Arena customer's reply |
+| `POST /api/coach/review` | required | AI soft-skill scores, summary and tips for a finished simulation |
 | `POST /api/resume/analyze` | required | Build a skills profile from the saved resume with AI (or from `{"text": ...}`) |
 | `GET /health` | public | Returns `{"status":"ok"}` |
 
@@ -56,6 +58,10 @@ In the web app, the account menu (top right) shows the Google user and has Log o
 "Analyze my resume" on the profile page sends the saved resume (PDF, DOCX or text) to `POST /api/resume/analyze`. The server extracts its text and asks Gemini for the web app's profile: name, headline, years of experience, languages, and a Bloom level (1 to 6) with a quoted piece of evidence for each of the app's 24 job skills. The server then keeps only known skills and evidence that appears word for word in the resume, so job-fit scores rest on what the resume actually says. Scoring itself stays deterministic in the web app. Results are cached until the resume is replaced.
 
 The model is called through an OpenAI-compatible chat completions API at `AI_BASE_URL`. On Cloudflare that is the Worker, which forwards to Gemini through AI Gateway; without `AI_BASE_URL`, analysis returns a "not configured" error. "Try a sample resume" still loads the built-in sample profile.
+
+## AI coach
+
+The personal coach's Socratic tutor and the Practice Arena use the same model (`AI_MODEL`). In the tutor, the AI asks the next question and grades each answer with a Bloom level (1 to 6), a confidence and a quote from the answer; those grades are the evidence that raises skill levels and job-fit scores. In the Practice Arena, the AI plays the customer and, at the end, scores communication, empathy, problem solving, composure and professionalism from 1 to 5 with a summary and three tips. The server clamps every number to its range and replaces any quote that isn't word for word from the learner.
 
 ## Login with Google
 
@@ -135,7 +141,7 @@ Configuration:
 | `WEB_DIR` | `./web/dist/client` | The built web app to serve |
 | `AI_BASE_URL` | (unset) | OpenAI-compatible API for resume analysis; unset turns analysis off |
 | `AI_API_TOKEN` | (unset) | Bearer token for `AI_BASE_URL`, if it needs one |
-| `AI_MODEL` | `google/gemini-2.5-flash` | Model to request |
+| `AI_MODEL` | `google/gemini-2.5-flash` | Model for resume analysis and the AI coach |
 | `RESUME_STORAGE_URL` | (unset) | If set, store resumes through this HTTP object API instead of `UPLOAD_DIR` (used on Cloudflare) |
 
 Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.

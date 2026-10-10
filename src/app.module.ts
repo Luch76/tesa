@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CoachModule } from './coach/coach.module.js';
 import { ResumeModule } from './resume/resume.module.js';
 import { WebModule } from './web/web.module.js';
 
@@ -11,6 +12,7 @@ import { WebModule } from './web/web.module.js';
     ConfigModule.forRoot({ isGlobal: true }),
     AuthModule,
     ResumeModule,
+    CoachModule,
     WebModule,
   ],
   controllers: [AppController],

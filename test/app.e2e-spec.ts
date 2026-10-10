@@ -186,6 +186,141 @@ describe('App (e2e)', () => {
     });
   });
 
+  describe('coach API', () => {
+    const job = {
+      title: 'Patient Access Representative',
+      employer: 'Bayfront Community Health',
+      sector: 'Healthcare',
+      scenario: {
+        name: 'The surprise bill',
+        character: 'Mrs. Ortiz, upset her MRI is not covered',
+        setting: 'Front desk',
+      },
+    };
+    const answer =
+      'I would confirm the plan is active and check whether the MRI needs prior authorization';
+
+    it('tutor: replies with the next question and grades the answer', async () => {
+      ai.reply = {
+        reply: 'Good. What would you do if the authorization is missing?',
+        grade: {
+          level: 4,
+          confidence: 0.8,
+          quote: 'check whether the MRI needs prior authorization',
+        },
+      };
+      const res = await request(app.getHttpServer())
+        .post('/api/coach/turn')
+        .set('Cookie', cookie)
+        .send({
+          mode: 'tutor',
+          language: 'en',
+          skill: 'Insurance Verification',
+          job,
+          currentLevel: 2,
+          targetLevel: 3,
+          turns: [
+            { role: 'assistant', text: 'What would you check first?' },
+            { role: 'user', text: answer },
+          ],
+        })
+        .expect(200);
+      expect(res.body).toEqual({
+        reply: 'Good. What would you do if the authorization is missing?',
+        grade: {
+          level: 4,
+          confidence: 0.8,
+          quote: 'check whether the MRI needs prior authorization',
+        },
+      });
+      expect(ai.lastBody?.model).toBe('google/test-model');
+      expect(ai.lastBody?.messages?.[0]?.content).toContain(
+        'Insurance Verification',
+      );
+      expect(ai.lastBody?.messages?.at(-1)?.content).toBe(answer);
+    });
+
+    it('simulation: replies in character without a grade', async () => {
+      ai.reply = { reply: 'That helps. When will you call me back?' };
+      const res = await request(app.getHttpServer())
+        .post('/api/coach/turn')
+        .set('Cookie', cookie)
+        .send({
+          mode: 'simulation',
+          language: 'es',
+          job,
+          turns: [{ role: 'user', text: 'Lo siento mucho.' }],
+        })
+        .expect(200);
+      expect(res.body).toEqual({
+        reply: 'That helps. When will you call me back?',
+      });
+      expect(ai.lastBody?.messages?.[0]?.content).toContain('Mrs. Ortiz');
+      expect(ai.lastBody?.messages?.[0]?.content).toContain('in Spanish');
+    });
+
+    it('reviews a finished simulation', async () => {
+      ai.reply = {
+        scores: {
+          communication: 4,
+          empathy: 5,
+          problem_solving: 3,
+          composure: 4,
+          professionalism: 4,
+        },
+        summary: 'Acknowledged the impact and offered a plan.',
+        quote: 'I will call you by 9 AM',
+        tips: [
+          'Give a timeframe.',
+          'Confirm the plan.',
+          'Summarize next steps.',
+        ],
+      };
+      const res = await request(app.getHttpServer())
+        .post('/api/coach/review')
+        .set('Cookie', cookie)
+        .send({
+          language: 'en',
+          job,
+          turns: [
+            { role: 'assistant', text: 'My MRI is not covered!' },
+            {
+              role: 'user',
+              text: 'I am sorry. I will call you by 9 AM with an answer.',
+            },
+          ],
+        })
+        .expect(200);
+      expect(res.body.scores.empathy).toBe(5);
+      expect(res.body.quote).toBe('I will call you by 9 AM');
+      expect(res.body.tips).toHaveLength(3);
+    });
+
+    it('requires the conversation to end with the learner', () => {
+      return request(app.getHttpServer())
+        .post('/api/coach/turn')
+        .set('Cookie', cookie)
+        .send({
+          mode: 'simulation',
+          job,
+          turns: [{ role: 'assistant', text: 'Hi' }],
+        })
+        .expect(400);
+    });
+
+    it('requires a login', () => {
+      return request(app.getHttpServer())
+        .post('/api/coach/turn')
+        .set('Accept', 'application/json')
+        .send({
+          mode: 'simulation',
+          job,
+          turns: [{ role: 'user', text: 'Hi' }],
+        })
+        .expect(401);
+    });
+  });
+
   describe('resume API', () => {
     afterEach(() => {
       rmSync(uploadDir, { recursive: true, force: true });

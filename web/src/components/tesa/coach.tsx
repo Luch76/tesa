@@ -176,8 +176,8 @@ export function CoachPage() {
           </div>
           <p className="helper">
             {t(
-              "Guided demo · coaching is scripted for this prototype.",
-              "Demo guiada · el coaching usa respuestas de ejemplo en este prototipo.",
+              "AI coaching powered by Gemini · replies and grades are AI estimates.",
+              "Coaching con IA de Gemini · respuestas y notas son estimaciones de la IA.",
             )}
           </p>
         </TabsContent>
