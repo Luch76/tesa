@@ -47,13 +47,45 @@ describe('App (e2e)', () => {
       .expect('Location', '/login');
   });
 
-  it('/ (GET) greets a signed-in user', () => {
+  it('/ (GET) opens the Resume tab for a signed-in user', () => {
     return request(app.getHttpServer())
       .get('/')
       .set('Cookie', cookie)
-      .expect(200)
-      .expect(/Hello, Ada Lovelace!/);
+      .expect(302)
+      .expect('Location', '/resume');
   });
+
+  it.each(['/resume', '/socratic', '/settings'])(
+    '%s (GET) renders the tab for a signed-in user',
+    (path) => {
+      return request(app.getHttpServer())
+        .get(path)
+        .set('Cookie', cookie)
+        .expect(200)
+        .expect('Content-Type', /text\/html/)
+        .expect(new RegExp(`href="${path}" aria-current="page"`));
+    },
+  );
+
+  it('/settings (GET) shows the signed-in user', () => {
+    return request(app.getHttpServer())
+      .get('/settings')
+      .set('Cookie', cookie)
+      .expect(200)
+      .expect(/Ada Lovelace/)
+      .expect(/ada@example\.com/);
+  });
+
+  it.each(['/resume', '/socratic', '/settings'])(
+    '%s (GET) sends browsers without a session to /login',
+    (path) => {
+      return request(app.getHttpServer())
+        .get(path)
+        .set('Accept', 'text/html')
+        .expect(302)
+        .expect('Location', '/login');
+    },
+  );
 
   it('/login (GET) shows the Google login link', () => {
     return request(app.getHttpServer())

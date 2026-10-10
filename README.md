@@ -20,13 +20,18 @@ Endpoints:
 
 | Route | Auth | Description |
 | --- | --- | --- |
-| `GET /` | required | Home page for the signed-in user |
+| `GET /` | required | Redirects to the first tab (`/resume`) |
+| `GET /resume` | required | Resume tab |
+| `GET /socratic` | required | Socratic Learning tab |
+| `GET /settings` | required | Settings tab: profile and log out |
 | `GET /login` | public | Login page with the "Login with Google" button |
 | `GET /auth/google` | public | Starts Google sign-in |
 | `GET /auth/google/callback` | public | Google redirects here after sign-in |
 | `GET /auth/me` | required | The signed-in user as JSON |
 | `POST /auth/logout` | public | Clears the session cookie |
 | `GET /health` | public | Returns `{"status":"ok"}` |
+
+The signed-in screens are mobile-first: a bottom tab bar on phones (respecting safe areas and notches) that becomes a top tab bar from 768px wide, with light and dark themes. Views live in `src/views/`.
 
 Every route requires a login unless it is marked `@Public()`. Browsers without a session are redirected to `/login`; API clients get a `401`.
 
