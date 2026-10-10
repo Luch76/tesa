@@ -1,6 +1,11 @@
 # tesa
 
-A [NestJS](https://nestjs.com/) (TypeScript) web app for Hack for Humanity Miami. Event info, challenges and rules are in [docs/README.md](docs/README.md).
+TESA Miami, a career-readiness web app for Hack for Humanity Miami. Event info, challenges and rules are in [docs/README.md](docs/README.md).
+
+The repo has two parts:
+
+- **`web/`**: the user interface, a React app built with [TanStack Start](https://tanstack.com/start) (originally generated with Lovable). It is built as a static single-page app and is currently a prototype: profile journey, Miami jobs, skill gap, personal coach and Socratic tutor, Practice Arena and proof portfolio, with demo data and progress saved in the browser.
+- **root (`src/`)**: a [NestJS](https://nestjs.com/) server that handles Google login, serves the built web app behind it, and provides the `/api` routes (resume storage).
 
 ## Prerequisites
 
@@ -13,30 +18,37 @@ A [NestJS](https://nestjs.com/) (TypeScript) web app for Hack for Humanity Miami
 ```bash
 cp .env.example .env   # then fill in the Google credentials (see below)
 npm install
-npm run start:dev      # http://localhost:3000, reloads on change
+(cd web && npm install && npm run build)
+npm run start:dev      # http://localhost:3000, reloads on server changes
 ```
 
-Endpoints:
+To work on the UI with hot reload, keep the server running and start Vite as well:
+
+```bash
+cd web && npm run dev  # proxies /api and /auth to the server on :3000
+```
+
+Sign in once at http://localhost:3000 first; the session cookie then works for the Vite dev server too.
+
+Routes:
 
 | Route | Auth | Description |
 | --- | --- | --- |
-| `GET /` | required | Redirects to the first tab (`/resume`) |
-| `GET /resume` | required | Resume tab: upload, view, replace or remove your resume |
-| `POST /resume` | required | Upload a resume (multipart field `resume`) |
-| `GET /resume/file` | required | The signed-in user's resume |
-| `POST /resume/delete` | required | Remove the signed-in user's resume |
-| `GET /socratic` | required | Socratic Learning tab |
-| `GET /settings` | required | Settings tab: profile and log out |
+| `GET /`, `/jobs`, `/gap`, `/coach`, `/simulations`, `/portfolio` | required | The web app (any other page path also serves it) |
 | `GET /login` | public | Login page with the "Login with Google" button |
 | `GET /auth/google` | public | Starts Google sign-in |
 | `GET /auth/google/callback` | public | Google redirects here after sign-in |
 | `GET /auth/me` | required | The signed-in user as JSON |
 | `POST /auth/logout` | public | Clears the session cookie |
+| `GET /api/resume` | required | The signed-in user's saved resume details, or `null` |
+| `POST /api/resume` | required | Upload a resume (multipart field `resume`) |
+| `GET /api/resume/file` | required | Download the signed-in user's resume |
+| `DELETE /api/resume` | required | Remove the signed-in user's resume |
 | `GET /health` | public | Returns `{"status":"ok"}` |
 
-The signed-in screens are mobile-first: a bottom tab bar on phones (respecting safe areas and notches) that becomes a top tab bar from 768px wide, with light and dark themes. Views live in `src/views/`.
+Every route requires a login unless it is marked `@Public()`. Browsers without a session are redirected to `/login`; API clients get a `401`. The web app's built scripts, styles and images are public; its HTML is not.
 
-Every route requires a login unless it is marked `@Public()`. Browsers without a session are redirected to `/login`; API clients get a `401`.
+In the web app, the account menu (top right) shows the Google user and has Log out. Adding a resume file on the profile page also saves it to the server.
 
 ## Login with Google
 
@@ -50,15 +62,17 @@ After Google sign-in, the app stores a signed JWT in an HTTP-only `access_token`
 ## Test and lint
 
 ```bash
-npm test               # unit tests (Vitest)
-npm run test:e2e       # end-to-end tests
+npm test               # server unit tests (Vitest)
+npm run test:e2e       # server end-to-end tests
 npm run lint           # oxlint
+cd web && npm test && npm run lint && npx tsc --noEmit   # web app
 ```
 
 ## Build
 
 ```bash
-npm run build          # compiles to dist/
+(cd web && npm run build)   # web app to web/dist/client
+npm run build               # server to dist/
 npm run start:prod
 ```
 
@@ -71,11 +85,11 @@ npm run docker:run     # docker run --rm -p 3000:3000 --env-file .env tesa
 docker compose up --build
 ```
 
-The image is a multi-stage `node:22-alpine` build that runs as the non-root `node` user and has a health check on `/health`. Docker Compose keeps uploaded resumes on the `app-data` volume, so they survive rebuilds; `docker compose down -v` deletes them.
+The image is a multi-stage `node:22-alpine` build (web app, then server) that runs as the non-root `node` user and has a health check on `/health`. Docker Compose keeps uploaded resumes on the `app-data` volume, so they survive rebuilds; `docker compose down -v` deletes them.
 
 ## Resume uploads
 
-Each user has one resume (uploading again replaces it). PDF, DOC and DOCX files up to 5 MB are accepted; the type is checked from the file's contents, not just its extension. Files are stored under `UPLOAD_DIR` in a folder named after a hash of the user's Google ID, so other users can't reach them.
+Each user has one resume (uploading again replaces it). PDF, DOC, DOCX and plain-text files up to 5 MB are accepted; the type is checked from the file's contents, not just its extension. Files are stored under `UPLOAD_DIR` in a folder named after a hash of the user's Google ID, so other users can't reach them.
 
 ## Deploy to Cloudflare
 
@@ -110,6 +124,7 @@ Configuration:
 | `JWT_SECRET` | (required) | Secret that signs session tokens |
 | `JWT_EXPIRES_IN_SECONDS` | `86400` | How long a login lasts |
 | `UPLOAD_DIR` | `./data/uploads` | Where uploaded resumes are stored (local disk) |
+| `WEB_DIR` | `./web/dist/client` | The built web app to serve |
 | `RESUME_STORAGE_URL` | (unset) | If set, store resumes through this HTTP object API instead of `UPLOAD_DIR` (used on Cloudflare) |
 
 Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.

@@ -8,30 +8,42 @@ const META = 'meta.json';
 
 export const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 
-/** Accepted resume formats, identified by their file signature rather than the extension. */
+const startsWith = (magic: Buffer) => (data: Buffer) =>
+  data.subarray(0, magic.length).equals(magic);
+
+/** Readable UTF-8 text with no binary content. */
+const isPlainText = (data: Buffer) => {
+  if (data.includes(0)) return false;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(data);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Accepted resume formats, identified by their contents rather than just the extension. */
 const FORMATS = [
   {
     ext: 'pdf',
     mimeType: 'application/pdf',
-    magic: Buffer.from('%PDF-'),
+    matches: startsWith(Buffer.from('%PDF-')),
   },
   {
     ext: 'docx',
     mimeType:
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    magic: Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+    matches: startsWith(Buffer.from([0x50, 0x4b, 0x03, 0x04])),
   },
   {
     ext: 'doc',
     mimeType: 'application/msword',
-    magic: Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+    matches: startsWith(
+      Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+    ),
   },
+  { ext: 'txt', mimeType: 'text/plain; charset=utf-8', matches: isPlainText },
 ] as const;
-
-export const RESUME_ACCEPT = FORMATS.flatMap((f) => [
-  `.${f.ext}`,
-  f.mimeType,
-]).join(',');
 
 export interface ResumeInfo {
   originalName: string;
@@ -57,14 +69,10 @@ export class ResumeService {
 
   async save(userId: string, file: Express.Multer.File): Promise<ResumeInfo> {
     const ext = file.originalname.split('.').pop()?.toLowerCase();
-    const format = FORMATS.find(
-      (f) =>
-        f.ext === ext &&
-        file.buffer.subarray(0, f.magic.length).equals(f.magic),
-    );
+    const format = FORMATS.find((f) => f.ext === ext && f.matches(file.buffer));
     if (!format) {
       throw new UnsupportedMediaTypeException(
-        'Upload a PDF or Word document (.pdf, .doc, .docx)',
+        'Upload a PDF, Word or text file (.pdf, .doc, .docx, .txt)',
       );
     }
 
