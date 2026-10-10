@@ -18,8 +18,8 @@ Hack for Humanity is [The AI Collective's global civic hackathon](https://fortun
 
 | Resource | What's inside |
 | --- | --- |
-| [Challenge Guide](Challenge%20Guide.md) | The three challenges and four tracks, build rules, submission checklist, judging rubric, prizes, schedule and resource links |
-| [Challenge Guide (PDF)](Hack%20for%20Humanity%20Miami%20Challenge%20Guide.pdf) | Printable copy of the guide |
+| [Challenge Guide](Challenge Guide.md) | The three challenges and four tracks, build rules, submission checklist, judging rubric, prizes, schedule and resource links |
+| [Challenge Guide (PDF)](Hack for Humanity Miami Challenge Guide.pdf) | Printable copy of the guide |
 | [Kickoff slides (PDF)](Hack%20for%20Humanity%20Miami%20Kickoff%20Slides.pdf) | The 21-slide opening-ceremony deck |
 | [Tools and open data](#tools-and-open-data) | AI tools, Miami data and official links, further down this page |
 
@@ -29,9 +29,9 @@ Every team enters **Build for Miami** by picking one of its four tracks. The sam
 
 | Challenge | What it rewards | Prize |
 | --- | --- | --- |
-| **1. [Build for Miami](Challenge%20Guide.md#challenge-1---build-for-miami)** (theme challenge, 4 tracks) | The strongest answer to a real Miami problem, scored on the [judging rubric](#judging) | Grand Champion and four Track Champions |
-| **2. [Best Open-Source AI Project](Challenge%20Guide.md#challenge-2---best-open-source-ai-project)** (MLH Hacktoberfest) | Open-source or open-weight AI as an important part of how the project works | Exclusive Hacktoberfest 2026 Winner DEV Badge & MLH Swag Bag |
-| **3. [Best Use of Gemma 4](Challenge%20Guide.md#challenge-3---best-use-of-gemma-4)** (Google DeepMind) | The most compelling build with Gemma 4 through the Gemini API | MLH partner prize |
+| **1. [Build for Miami](Challenge Guide.md#challenge-1---build-for-miami)** (theme challenge, 4 tracks) | The strongest answer to a real Miami problem, scored on the [judging rubric](#judging) | Grand Champion and four Track Champions |
+| **2. [Best Open-Source AI Project](Challenge Guide.md#challenge-2---best-open-source-ai-project)** (MLH Hacktoberfest) | Open-source or open-weight AI as an important part of how the project works | Exclusive Hacktoberfest 2026 Winner DEV Badge & MLH Swag Bag |
+| **3. [Best Use of Gemma 4](Challenge Guide.md#challenge-3---best-use-of-gemma-4)** (Google DeepMind) | The most compelling build with Gemma 4 through the Gemini API | MLH partner prize |
 
 ### Challenge 1 - Build for Miami
 
@@ -39,10 +39,10 @@ Our theme challenge: pick one of four tracks and build for the people who live h
 
 | # | Track | The question | You might build |
 | --- | --- | --- | --- |
-| 01 | [Four Forces, One City](Challenge%20Guide.md#track-01---four-forces-one-city) | How does Miami stay safe and livable as water, air, land and fire push back? | Street-level flood alerts, heat-safety copilots for job sites, storm-ready offline info hubs |
-| 02 | [Wild Miami](Challenge%20Guide.md#track-02---wild-miami) | How do we protect the animals we share Miami with, and keep neighbors safe too? | Injured-wildlife reporting agents, roadkill hotspot maps, shelter adoption matchers |
-| 03 | [Brain Gain](Challenge%20Guide.md#track-03---brain-gain) | How does Miami keep the talent it attracts? | Career pathway navigators, AI reskilling coaches, newcomer onboarding guides |
-| 04 | [Data to Action](Challenge%20Guide.md#track-04---data-to-action) | What does the data say, and what should Miami do about it? | Dashboards, maps, alerts or agents built on open city data |
+| 01 | [Four Forces, One City](Challenge Guide.md#track-01---four-forces-one-city) | How does Miami stay safe and livable as water, air, land and fire push back? | Street-level flood alerts, heat-safety copilots for job sites, storm-ready offline info hubs |
+| 02 | [Wild Miami](Challenge Guide.md#track-02---wild-miami) | How do we protect the animals we share Miami with, and keep neighbors safe too? | Injured-wildlife reporting agents, roadkill hotspot maps, shelter adoption matchers |
+| 03 | [Brain Gain](Challenge Guide.md#track-03---brain-gain) | How does Miami keep the talent it attracts? | Career pathway navigators, AI reskilling coaches, newcomer onboarding guides |
+| 04 | [Data to Action](Challenge Guide.md#track-04---data-to-action) | What does the data say, and what should Miami do about it? | Dashboards, maps, alerts or agents built on open city data |
 
 ### Challenge 2 - Best Open-Source AI Project
 
@@ -55,7 +55,7 @@ Build an original project that uses open-source or open-weight AI as an importan
 - An agent skill must comply with the [Agent Skill Open Standard](https://agentskills.io/).
 - A model-harness entry must include an original implementation or meaningful changes to an existing open-source harness.
 
-Full details: [Challenge 2](Challenge%20Guide.md#challenge-2---best-open-source-ai-project) · [MLH rules](https://hacktoberfest-handbook.mlh.com/fest-planning-guide/open-source-prize-categories)
+Full details: [Challenge 2](Challenge Guide.md#challenge-2---best-open-source-ai-project) · [MLH rules](https://hacktoberfest-handbook.mlh.com/fest-planning-guide/open-source-prize-categories)
 
 ### Challenge 3 - Best Use of Gemma 4
 
@@ -67,7 +67,7 @@ Gemma 4 packs multimodal intelligence into a lightweight, open-weights model you
 - **Focused AI Tools:** build a focused AI tool for learning, creativity, productivity, or your community.
 - **Rapid Prototyping:** experiment with an open model while using the Gemini API to move quickly from an idea to a working prototype.
 
-To qualify, use Gemma 4 through the Gemini API, name the model in your README, and show the integration in your demo. Full details: [Challenge 3](Challenge%20Guide.md#challenge-3---best-use-of-gemma-4) · [Gemma 4 resources](https://mlh.link/gemma)
+To qualify, use Gemma 4 through the Gemini API, name the model in your README, and show the integration in your demo. Full details: [Challenge 3](Challenge Guide.md#challenge-3---best-use-of-gemma-4) · [Gemma 4 resources](https://mlh.link/gemma)
 
 ## How it works
 
@@ -77,7 +77,7 @@ To qualify, use Gemma 4 through the Gemini API, name the model in your README, a
 4. **Submit** in OrganizerHQ by 3:45 PM: a public GitHub repo with an open-source license, a short description, the technologies you used, your Build for Miami track and any MLH challenges you qualify for.
 5. **Demo** for 2 minutes, plus 1 minute of questions. Show the working product, not slides.
 
-Full rules and the submission checklist: [Build requirements](Challenge%20Guide.md#build-requirements).
+Full rules and the submission checklist: [Build requirements](Challenge Guide.md#build-requirements).
 
 ## Judging
 
@@ -91,7 +91,7 @@ Build for Miami is scored on this rubric: judges score every demo from 1 to 5 on
 | Originality and craft | 15% |
 | Demo clarity | 10% |
 
-What judges look for on each criterion: [Judging rubric](Challenge%20Guide.md#judging-rubric).
+What judges look for on each criterion: [Judging rubric](Challenge Guide.md#judging-rubric).
 
 ## Prizes
 
@@ -101,7 +101,7 @@ What judges look for on each criterion: [Judging rubric](Challenge%20Guide.md#ju
 - **Best Use of Gemma 4:** MLH partner prize
 - **Every builder:** Hacktoberfest swag, plus an "I Demoed" sticker when your team presents
 
-All winning teams may be invited to join a grant-funded project to commercialize what they built, and may be showcased in The AI Collective's global newsletter to 300k+ subscribers. Details: [Prize categories](Challenge%20Guide.md#prize-categories).
+All winning teams may be invited to join a grant-funded project to commercialize what they built, and may be showcased in The AI Collective's global newsletter to 300k+ subscribers. Details: [Prize categories](Challenge Guide.md#prize-categories).
 
 ## Schedule
 
@@ -116,7 +116,7 @@ All winning teams may be invited to join a grant-funded project to commercialize
 | 4:30 PM | Judging |
 | 4:45 PM | Winners and closing |
 
-All times Eastern. Full run of show: [Schedule](Challenge%20Guide.md#schedule).
+All times Eastern. Full run of show: [Schedule](Challenge Guide.md#schedule).
 
 ## Tools and open data
 
