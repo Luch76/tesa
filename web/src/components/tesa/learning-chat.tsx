@@ -131,6 +131,16 @@ export function LearningChat({
     retry: false,
   });
   const cloudVoice = speechConfig?.enabled === true;
+  // Say once per visit why the ElevenLabs voice isn't being used, instead of switching silently.
+  const voiceNoticeShown = useRef(false);
+  function noteBrowserVoice(reason: string) {
+    console.warn("Using the browser voice:", reason);
+    if (voiceNoticeShown.current) return;
+    voiceNoticeShown.current = true;
+    toast.info(t("Using the browser’s voice", "Usando la voz del navegador"), {
+      description: reason,
+    });
+  }
   const session = useRef("");
   const submitted = useRef("");
   const userCount = turns.filter((t) => t.role === "user").length;
@@ -180,8 +190,18 @@ export function LearningChat({
       onDone?.();
       return;
     }
-    if (cloudVoice) sayWithElevenLabs(reply, onDone);
-    else sayWithBrowser(reply, onDone);
+    if (cloudVoice) {
+      sayWithElevenLabs(reply, onDone);
+      return;
+    }
+    if (speechConfig)
+      noteBrowserVoice(
+        t(
+          "The ElevenLabs voice isn’t configured on the server.",
+          "La voz de ElevenLabs no está configurada en el servidor.",
+        ),
+      );
+    sayWithBrowser(reply, onDone);
   }
   /** Plays the reply in the ElevenLabs voice; falls back to the browser voice if that fails. */
   function sayWithElevenLabs(reply: string, onDone?: () => void) {
@@ -202,16 +222,21 @@ export function LearningChat({
       setSpeaking(false);
       onDone?.();
     };
-    const fallback = () => {
+    const fallback = (reason: unknown) => {
       if (finished || speechId.current !== id) return;
       finished = true;
       cleanup();
+      noteBrowserVoice(
+        reason instanceof Error
+          ? `ElevenLabs: ${reason.name === "NotAllowedError" ? t("the browser blocked audio playback", "el navegador bloqueó el audio") : reason.message}`
+          : `ElevenLabs: ${String(reason)}`,
+      );
       sayWithBrowser(reply, onDone);
     };
     // Give the voice service a while to respond; once audio loads, wait for its length.
     let watchdog = window.setTimeout(() => {
       controller.abort();
-      fallback();
+      fallback(t("no audio after 20 seconds", "sin audio tras 20 segundos"));
     }, 20_000);
     setSpeaking(true);
     synthesizeSpeech(reply, controller.signal)
@@ -224,7 +249,8 @@ export function LearningChat({
           watchdog = window.setTimeout(done, seconds * 1000 + 3000);
         };
         player.onended = done;
-        player.onerror = fallback;
+        player.onerror = () =>
+          fallback(t("the audio couldn’t be played", "no se pudo reproducir el audio"));
         player.src = url;
         return player.play();
       })

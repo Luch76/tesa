@@ -8,6 +8,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { Public } from '../auth/public.decorator.js';
 import { CoachService } from './coach.service.js';
 import { Grade, parseCoachContext, SimulationReview } from './coach.types.js';
 import { MAX_SPEECH_CHARS, SpeechService } from './speech.service.js';
@@ -20,10 +21,14 @@ export class CoachController {
     private readonly speech: SpeechService,
   ) {}
 
-  /** Whether replies can be spoken with the ElevenLabs voice. */
+  /**
+   * Whether replies can be spoken with the ElevenLabs voice. Public so deployments can be
+   * checked without signing in; it reveals no key or voice.
+   */
+  @Public()
   @Get('speech')
-  speechConfig(): { enabled: boolean } {
-    return { enabled: this.speech.enabled };
+  speechConfig(): { enabled: boolean; model: string } {
+    return { enabled: this.speech.enabled, model: this.speech.model };
   }
 
   /** The coach's reply as MP3 audio in the configured ElevenLabs voice. */

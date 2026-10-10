@@ -342,12 +342,11 @@ describe('App (e2e)', () => {
         voice.status = 200;
       });
 
-      it('reports that the voice is enabled', () => {
+      it('reports publicly whether the voice is enabled', () => {
         return request(app.getHttpServer())
           .get('/api/coach/speech')
-          .set('Cookie', cookie)
           .expect(200)
-          .expect({ enabled: true });
+          .expect({ enabled: true, model: 'eleven_flash_v2_5' });
       });
 
       it('returns MP3 audio of the reply in the configured voice', async () => {
@@ -406,8 +405,7 @@ describe('App (e2e)', () => {
           await app.init();
           await request(app.getHttpServer())
             .get('/api/coach/speech')
-            .set('Cookie', cookie)
-            .expect({ enabled: false });
+            .expect({ enabled: false, model: 'eleven_flash_v2_5' });
           await request(app.getHttpServer())
             .post('/api/coach/speech')
             .set('Cookie', cookie)

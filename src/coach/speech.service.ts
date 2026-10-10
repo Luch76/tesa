@@ -26,6 +26,10 @@ export class SpeechService {
     ).replace(/\/+$/, '');
   }
 
+  get model(): string {
+    return this.modelId;
+  }
+
   get enabled(): boolean {
     return Boolean(this.apiKey && this.voiceId);
   }
