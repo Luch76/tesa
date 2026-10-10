@@ -1,2 +1,22 @@
+# dependencies
+node_modules
+
+# build output
+dist
+coverage
+
 package-lock.json
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# OS / IDE
+.DS_Store
 .idea
+.vscode
+*.tsbuildinfo
