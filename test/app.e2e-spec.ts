@@ -59,7 +59,7 @@ beforeAll(async () => {
   });
   await new Promise<void>((done) => aiServer.listen(0, '127.0.0.1', done));
   process.env.AI_BASE_URL = `http://127.0.0.1:${(aiServer.address() as AddressInfo).port}/v1`;
-  process.env.AI_MODEL = 'google-ai-studio/test-model';
+  process.env.AI_MODEL = 'google/test-model';
 });
 afterAll(() => aiServer.close());
 
@@ -345,7 +345,7 @@ describe('App (e2e)', () => {
               },
             },
           });
-          expect(ai.lastBody?.model).toBe('google-ai-studio/test-model');
+          expect(ai.lastBody?.model).toBe('google/test-model');
           expect(ai.lastBody?.messages?.at(-1)?.content).toContain(
             'Built weekly revenue dashboards',
           );

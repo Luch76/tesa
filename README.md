@@ -118,7 +118,7 @@ Configuration:
 - `GOOGLE_CALLBACK_URL` is a var in `cloudflare/wrangler.jsonc`. It must also be an authorized redirect URI on the Google OAuth client.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `JWT_SECRET` are Worker secrets. Update them with `npx wrangler deploy --secrets-file <file>` (or `npx wrangler secret put <NAME>`).
 - A running container keeps the environment it started with. The Worker restarts it when the configuration changes, but this can lag by a few minutes; at the latest it applies after the next idle sleep.
-- Resume analysis uses the Worker's AI binding: `AI_MODEL` (default `google-ai-studio/gemini-2.5-flash`) through the AI Gateway `AI_GATEWAY_ID` (default `default`), vars in `cloudflare/wrangler.jsonc`. Third-party models need AI Gateway [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/): the account must have AI Gateway credits loaded.
+- Resume analysis uses the Worker's AI binding: `AI_MODEL` (default `google/gemini-2.5-flash`) through the AI Gateway `AI_GATEWAY_ID` (default `default`), vars in `cloudflare/wrangler.jsonc`. Third-party models need AI Gateway [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/): the account must have AI Gateway credits loaded.
 - Logs: `npx wrangler tail`.
 
 ## Configuration
@@ -135,7 +135,7 @@ Configuration:
 | `WEB_DIR` | `./web/dist/client` | The built web app to serve |
 | `AI_BASE_URL` | (unset) | OpenAI-compatible API for resume analysis; unset turns analysis off |
 | `AI_API_TOKEN` | (unset) | Bearer token for `AI_BASE_URL`, if it needs one |
-| `AI_MODEL` | `google-ai-studio/gemini-2.5-flash` | Model to request |
+| `AI_MODEL` | `google/gemini-2.5-flash` | Model to request |
 | `RESUME_STORAGE_URL` | (unset) | If set, store resumes through this HTTP object API instead of `UPLOAD_DIR` (used on Cloudflare) |
 
 Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.
