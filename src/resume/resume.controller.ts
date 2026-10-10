@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Delete,
   Get,
@@ -16,6 +17,9 @@ import { create as contentDisposition } from 'content-disposition';
 import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthUser } from '../auth/user.js';
+import type { Profile } from '../analysis/profile.js';
+import { ResumeAnalysisService } from '../analysis/resume-analysis.service.js';
+import { extractResumeText } from '../analysis/text-extract.js';
 import { ResumeUploadFilter } from './resume-upload.filter.js';
 import {
   RESUME_MAX_BYTES,
@@ -23,16 +27,55 @@ import {
   ResumeService,
 } from './resume.service.js';
 
+const MAX_PASTED_CHARS = 50_000;
+
 /** JSON API for the signed-in user's resume, used by the web app. */
 @Controller('api/resume')
 export class ResumeController {
-  constructor(private readonly resumes: ResumeService) {}
+  constructor(
+    private readonly resumes: ResumeService,
+    private readonly analysis: ResumeAnalysisService,
+  ) {}
 
   @Get()
   async get(
     @CurrentUser() user: AuthUser,
-  ): Promise<{ resume: ResumeInfo | null }> {
-    return { resume: await this.resumes.find(user.id) };
+  ): Promise<{ resume: ResumeInfo | null; profile: Profile | null }> {
+    const [resume, profile] = await Promise.all([
+      this.resumes.find(user.id),
+      this.resumes.findAnalysis(user.id),
+    ]);
+    return { resume, profile };
+  }
+
+  /**
+   * Builds a skills profile from the user's saved resume, or from pasted text when
+   * `text` is given. Analyses of the saved file are cached until it's replaced.
+   */
+  @Post('analyze')
+  @HttpCode(200)
+  async analyze(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { text?: unknown } | undefined,
+  ): Promise<{ profile: Profile }> {
+    if (typeof body?.text === 'string' && body.text.trim()) {
+      if (body.text.length > MAX_PASTED_CHARS) {
+        throw new BadRequestException('That resume text is too long.');
+      }
+      return { profile: await this.analysis.analyze(body.text) };
+    }
+
+    const cached = await this.resumes.findAnalysis(user.id);
+    if (cached) return { profile: cached };
+
+    const resume = await this.resumes.read(user.id);
+    if (!resume) {
+      throw new BadRequestException('Add your resume first.');
+    }
+    const text = await extractResumeText(resume.data, resume.info.mimeType);
+    const profile = await this.analysis.analyze(text);
+    await this.resumes.saveAnalysis(user.id, resume.info, profile);
+    return { profile };
   }
 
   @Post()

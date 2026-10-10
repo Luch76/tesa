@@ -44,11 +44,18 @@ Routes:
 | `POST /api/resume` | required | Upload a resume (multipart field `resume`) |
 | `GET /api/resume/file` | required | Download the signed-in user's resume |
 | `DELETE /api/resume` | required | Remove the signed-in user's resume |
+| `POST /api/resume/analyze` | required | Build a skills profile from the saved resume with AI (or from `{"text": ...}`) |
 | `GET /health` | public | Returns `{"status":"ok"}` |
 
 Every route requires a login unless it is marked `@Public()`. Browsers without a session are redirected to `/login`; API clients get a `401`. The web app's built scripts, styles and images are public; its HTML is not.
 
 In the web app, the account menu (top right) shows the Google user and has Log out. Adding a resume file on the profile page also saves it to the server.
+
+## Resume analysis
+
+"Analyze my resume" on the profile page sends the saved resume (PDF, DOCX or text) to `POST /api/resume/analyze`. The server extracts its text and asks Gemini for the web app's profile: name, headline, years of experience, languages, and a Bloom level (1 to 6) with a quoted piece of evidence for each of the app's 24 job skills. The server then keeps only known skills and evidence that appears word for word in the resume, so job-fit scores rest on what the resume actually says. Scoring itself stays deterministic in the web app. Results are cached until the resume is replaced.
+
+The model is called through an OpenAI-compatible chat completions API at `AI_BASE_URL`. On Cloudflare that is the Worker, which forwards to Gemini through AI Gateway; without `AI_BASE_URL`, analysis returns a "not configured" error. "Try a sample resume" still loads the built-in sample profile.
 
 ## Login with Google
 
@@ -111,6 +118,7 @@ Configuration:
 - `GOOGLE_CALLBACK_URL` is a var in `cloudflare/wrangler.jsonc`. It must also be an authorized redirect URI on the Google OAuth client.
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `JWT_SECRET` are Worker secrets. Update them with `npx wrangler deploy --secrets-file <file>` (or `npx wrangler secret put <NAME>`).
 - A running container keeps the environment it started with. The Worker restarts it when the configuration changes, but this can lag by a few minutes; at the latest it applies after the next idle sleep.
+- Resume analysis uses the Worker's AI binding: `AI_MODEL` (default `google-ai-studio/gemini-2.5-flash`) through the AI Gateway `AI_GATEWAY_ID` (default `default`), vars in `cloudflare/wrangler.jsonc`. Third-party models need AI Gateway [Unified Billing](https://developers.cloudflare.com/ai-gateway/features/unified-billing/): the account must have AI Gateway credits loaded.
 - Logs: `npx wrangler tail`.
 
 ## Configuration
@@ -125,6 +133,9 @@ Configuration:
 | `JWT_EXPIRES_IN_SECONDS` | `86400` | How long a login lasts |
 | `UPLOAD_DIR` | `./data/uploads` | Where uploaded resumes are stored (local disk) |
 | `WEB_DIR` | `./web/dist/client` | The built web app to serve |
+| `AI_BASE_URL` | (unset) | OpenAI-compatible API for resume analysis; unset turns analysis off |
+| `AI_API_TOKEN` | (unset) | Bearer token for `AI_BASE_URL`, if it needs one |
+| `AI_MODEL` | `google-ai-studio/gemini-2.5-flash` | Model to request |
 | `RESUME_STORAGE_URL` | (unset) | If set, store resumes through this HTTP object API instead of `UPLOAD_DIR` (used on Cloudflare) |
 
 Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.

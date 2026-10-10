@@ -2,9 +2,11 @@ import { Injectable, UnsupportedMediaTypeException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
+import type { Profile } from '../analysis/profile.js';
 import { ResumeStorage, resumeStorageFor } from './resume.storage.js';
 
 const META = 'meta.json';
+const ANALYSIS = 'analysis.json';
 
 export const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -119,7 +121,35 @@ export class ResumeService {
     if (stored) {
       await this.storage.delete(this.key(userId, stored.storedName));
     }
+    await this.storage.delete(this.key(userId, ANALYSIS));
     await this.storage.delete(this.key(userId, META));
+  }
+
+  /** The saved analysis of the user's current resume, if it has been analyzed. */
+  async findAnalysis(userId: string): Promise<Profile | null> {
+    const [stored, analysis] = await Promise.all([
+      this.readMeta(userId),
+      this.storage.get(this.key(userId, ANALYSIS)),
+    ]);
+    if (!stored || !analysis) return null;
+    const { uploadedAt, profile } = JSON.parse(analysis.toString('utf8')) as {
+      uploadedAt: string;
+      profile: Profile;
+    };
+    // An analysis of an earlier upload doesn't describe the current file.
+    return uploadedAt === stored.uploadedAt ? profile : null;
+  }
+
+  async saveAnalysis(
+    userId: string,
+    resume: ResumeInfo,
+    profile: Profile,
+  ): Promise<void> {
+    await this.storage.put(
+      this.key(userId, ANALYSIS),
+      Buffer.from(JSON.stringify({ uploadedAt: resume.uploadedAt, profile })),
+      'application/json',
+    );
   }
 
   private async readMeta(userId: string): Promise<StoredResume | null> {

@@ -22,6 +22,7 @@ import { JOBS, type Job } from "@/lib/tesa/data";
 import { scoreJob } from "@/lib/tesa/scoring";
 import type { ReactNode } from "react";
 import { AccountMenu } from "./account-menu";
+import { initials } from "@/lib/utils";
 
 export const navItems = [
   { to: "/", en: "My profile", es: "Mi perfil", icon: UserRound },
@@ -170,11 +171,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="user-footer">
-          <div className="avatar">{state.analyzed ? "DR" : "YO"}</div>
+          <div className="avatar">{state.analyzed ? initials(state.profile.name) : "YO"}</div>
           <div>
             <div className="text-[11px]">
               {state.analyzed
-                ? state.profile.name
+                ? state.profile.name || t("Your profile", "Tu perfil")
                 : t("Your career starts here", "Tu carrera comienza aquí")}
             </div>
             <div className="text-[9px] text-muted-foreground mt-1">

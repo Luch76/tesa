@@ -15,6 +15,8 @@ export function CoachPage() {
   const { mode } = useSearch({ from: "/coach" });
   const navigate = useNavigate({ from: "/coach" });
   const { state, update, t } = useTesa();
+  const firstName = state.analyzed ? (state.profile.name.split(/\s+/)[0] ?? "") : "";
+  const headline = state.analyzed ? state.profile.headline : "";
   const job = getJob(state.focus);
   const fit = scoreJob(job, state.profile, state.evidence, state.sims);
   const missing =
@@ -50,14 +52,14 @@ export function CoachPage() {
             <div>
               <h2>
                 {t(
-                  `Hi ${state.analyzed ? "Daniela" : "there"}, you’re closer than you think.`,
-                  `Hola ${state.analyzed ? "Daniela" : ""}, estás más cerca de lo que crees.`,
+                  `Hi ${firstName || "there"}, you’re closer than you think.`,
+                  `Hola${firstName ? ` ${firstName}` : ""}, estás más cerca de lo que crees.`,
                 )}
               </h2>
               <p>
                 {t(
-                  "Your hospitality experience has already built valuable skills. Let’s choose a role, work on the biggest gaps, and practice real workplace moments.",
-                  "Tu experiencia en hospitalidad ya te ha dado habilidades valiosas. Elijamos un puesto, cerremos las brechas y practiquemos situaciones reales.",
+                  `Your experience${headline ? ` as ${headline}` : ""} has already built valuable skills. Let’s choose a role, work on the biggest gaps, and practice real workplace moments.`,
+                  `Tu experiencia${headline ? ` como ${headline}` : ""} ya te ha dado habilidades valiosas. Elijamos un puesto, cerremos las brechas y practiquemos situaciones reales.`,
                 )}
               </p>
             </div>

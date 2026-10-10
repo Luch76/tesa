@@ -1,3 +1,5 @@
+import type { Profile } from "@/lib/tesa/data";
+
 /** Calls to the NestJS server that hosts this app (same origin; the session is an HTTP-only cookie). */
 
 export interface Me {
@@ -47,6 +49,17 @@ export const getMe = () => request<Me>("/auth/me");
 
 export const getResume = () =>
   request<{ resume: SavedResume | null }>("/api/resume").then((r) => r.resume);
+
+/**
+ * Builds a skills profile with AI from the user's saved resume, or from `text` when
+ * given (pasted resume text, which isn't stored).
+ */
+export const analyzeResume = (text?: string) =>
+  request<{ profile: Profile }>("/api/resume/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(text ? { text } : {}),
+  }).then((r) => r.profile);
 
 export function uploadResume(file: File): Promise<SavedResume> {
   const form = new FormData();

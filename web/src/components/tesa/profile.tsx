@@ -17,10 +17,11 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getResume, uploadResume } from "@/lib/api/client";
+import { analyzeResume, getResume, uploadResume } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { useTesa } from "@/lib/tesa/context";
-import { BLOOM, JOBS, SAMPLE_PROFILE, SAMPLE_RESUME } from "@/lib/tesa/data";
+import { BLOOM, JOBS } from "@/lib/tesa/data";
+import { initials } from "@/lib/utils";
 import { scoreJob, skillLevel } from "@/lib/tesa/scoring";
 import { BloomBar, PageHeading, Status } from "./shared";
 import miamiBay from "@/assets/miami-bay.jpg";
@@ -35,6 +36,8 @@ export function ProfilePage() {
     [expanded, setExpanded] = useState(false),
     [confirm, setConfirm] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  // The latest upload, so analysis can wait for it; resolves to whether it succeeded.
+  const uploading = useRef<Promise<boolean> | null>(null);
   // Show the resume already saved to the user's account, if any.
   useEffect(() => {
     getResume()
@@ -53,39 +56,48 @@ export function ProfilePage() {
       return;
     }
     setFile(f.name);
-    void saveToAccount(f);
+    uploading.current = saveToAccount(f);
     if (/\.txt$/i.test(f.name)) update({ resume: await f.text() });
-    else
-      toast.info(t("File attached for the demo", "Archivo adjunto para la demo"), {
-        description: t(
-          "This prototype demonstrates analysis with Daniela’s sample profile.",
-          "Este prototipo muestra el análisis con el perfil de ejemplo de Daniela.",
-        ),
-      });
   }
-  async function saveToAccount(f: File) {
+  async function saveToAccount(f: File): Promise<boolean> {
     try {
       await uploadResume(f);
       toast.success(t("Resume saved to your account", "Currículum guardado en tu cuenta"));
+      return true;
     } catch (error) {
       toast.error(t("Couldn’t save your resume", "No se pudo guardar tu currículum"), {
         description: error instanceof Error ? error.message : undefined,
       });
+      return false;
     }
   }
-  function analyze() {
+  async function analyze() {
     if (!state.resume.trim() && !file) return;
     setBusy(true);
-    window.setTimeout(() => {
-      update({ profile: structuredClone(SAMPLE_PROFILE), analyzed: true, evidence: [], sims: [] });
-      setBusy(false);
-      toast.success(t("Sample skill analysis is ready", "El análisis de ejemplo está listo"), {
+    try {
+      let profile;
+      if (file) {
+        // Analyze the file saved to the account, once its upload has finished.
+        if (uploading.current && !(await uploading.current)) return;
+        profile = await analyzeResume();
+      } else {
+        profile = await analyzeResume(state.resume);
+      }
+      update({ profile, analyzed: true, source: "resume", evidence: [], sims: [] });
+      const found = Object.keys(profile.skills).length;
+      toast.success(t("Your skill analysis is ready", "Tu análisis de habilidades está listo"), {
         description: t(
-          "Demo results use Daniela’s supplied sample—not an AI review of your resume.",
-          "Los resultados usan el ejemplo de Daniela, no una revisión de tu currículum con IA.",
+          `Found ${found} job skill${found === 1 ? "" : "s"} in your resume.`,
+          `Encontramos ${found} habilidad${found === 1 ? "" : "es"} laboral${found === 1 ? "" : "es"} en tu currículum.`,
         ),
       });
-    }, 1100);
+    } catch (error) {
+      toast.error(t("Couldn’t analyze your resume", "No se pudo analizar tu currículum"), {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <>
@@ -213,8 +225,8 @@ export function ProfilePage() {
                   <p className="helper">
                     <LockKeyhole size={11} />
                     {t(
-                      "Demo mode · analysis uses the supplied sample profile.",
-                      "Modo demo · el análisis usa el perfil de ejemplo proporcionado.",
+                      "Analyzed by Gemini AI · skill levels are estimates.",
+                      "Analizado con IA de Gemini · los niveles son estimaciones.",
                     )}
                   </p>
                 </div>
@@ -223,13 +235,19 @@ export function ProfilePage() {
             <section className="panel">
               <div className="panel-head">
                 <h2>{t("Your skill snapshot", "Tu resumen de habilidades")}</h2>
-                <span className="pill sample">{t("Sample profile", "Perfil de ejemplo")}</span>
+                <span className="pill sample">
+                  {state.source === "sample"
+                    ? t("Sample profile", "Perfil de ejemplo")
+                    : t("From your resume", "De tu currículum")}
+                </span>
               </div>
               <div className="panel-body">
                 <div className="profile-summary">
-                  <div className="avatar">DR</div>
+                  <div className="avatar">{initials(state.profile.name)}</div>
                   <div>
-                    <h3 className="profile-name">{state.profile.name}</h3>
+                    <h3 className="profile-name">
+                      {state.profile.name || t("Your profile", "Tu perfil")}
+                    </h3>
                     <p className="profile-meta">
                       {t(
                         "Front Desk Supervisor · Hospitality",

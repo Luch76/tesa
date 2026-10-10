@@ -1,12 +1,20 @@
 import { useContext, useEffect, useState, type ReactNode } from "react";
 import { toast, Toaster } from "sonner";
-import { JOBS, SAMPLE_PROFILE, SAMPLE_RESUME, type Evidence, type Simulation } from "./data";
+import {
+  EMPTY_PROFILE,
+  JOBS,
+  SAMPLE_PROFILE,
+  SAMPLE_RESUME,
+  type Evidence,
+  type Simulation,
+} from "./data";
 import { scoreJob, skillLevel } from "./scoring";
 import { TesaContext as Context, type State } from "./learner-context";
 const initial: State = {
-  profile: SAMPLE_PROFILE,
+  profile: EMPTY_PROFILE,
   resume: "",
   analyzed: false,
+  source: null,
   saved: ["gem", "pa", "csm"],
   focus: "gem",
   evidence: [],
@@ -15,12 +23,14 @@ const initial: State = {
   language: "en",
   theme: "dark",
 };
+// v2: progress saved before real resume analysis assumed the sample profile.
+const STORAGE_KEY = "tesa-miami-v2";
 export function TesaProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(initial);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("tesa-miami-demo-v1");
+      const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (
@@ -37,7 +47,7 @@ export function TesaProvider({ children }: { children: ReactNode }) {
     setHydrated(true);
   }, []);
   useEffect(() => {
-    if (hydrated) localStorage.setItem("tesa-miami-demo-v1", JSON.stringify(state));
+    if (hydrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state, hydrated]);
   const update = (s: Partial<State>) => setState((prev) => ({ ...prev, ...s }));
   useEffect(() => {
@@ -96,6 +106,7 @@ export function TesaProvider({ children }: { children: ReactNode }) {
             profile: structuredClone(SAMPLE_PROFILE),
             resume: SAMPLE_RESUME,
             analyzed: true,
+            source: "sample",
             evidence: [],
             sims: [],
           }),

@@ -408,6 +408,14 @@ export const SAMPLE_PROFILE: Profile = {
     "Customer Success Management": { level: 2, evidence: "turn them into return stays" },
   },
 };
+/** The profile before any resume is analyzed. */
+export const EMPTY_PROFILE: Profile = {
+  name: "",
+  headline: "",
+  years: 0,
+  languages: [],
+  skills: {},
+};
 export const SAMPLE_RESUME =
   "DANIELA REYES\nMiami, FL \u00b7 Bilingual English / Spanish\n\nEXPERIENCE\nFront Desk Supervisor, The Palms Brickell Hotel (2021 to present)\n- Supervise a front desk team of 6 across three shifts; build weekly shift schedules\n- Resolve escalated guest complaints and turn them into return stays (guest satisfaction up from 84 to 91)\n- Manage reservations and room assignments in Opera PMS during peak events like Art Basel and Miami Open\n- Track weekly occupancy and upgrade revenue in Excel and report to the GM\n- Train new hires on check-in standards and service recovery\n\nGuest Services Agent, Seabreeze Resort, Miami Beach (2019 to 2021)\n- Handled 150+ check-ins a day in English and Spanish\n- Logged guest preferences in HubSpot for repeat visitors\n- Coordinated room moves with housekeeping and maintenance\n\nEDUCATION\nA.A. Business Administration, Miami Dade College\n\nSKILLS\nExcel (pivot tables), Opera PMS, HubSpot (basic), conflict resolution, team scheduling";
 export type SoftKey =

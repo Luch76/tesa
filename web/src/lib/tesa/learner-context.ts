@@ -5,6 +5,8 @@ export type State = {
   profile: Profile;
   resume: string;
   analyzed: boolean;
+  /** Where the profile came from: the built-in sample, or an analysis of the user's resume. */
+  source: "sample" | "resume" | null;
   saved: string[];
   focus: string;
   evidence: Evidence[];

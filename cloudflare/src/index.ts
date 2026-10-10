@@ -13,6 +13,53 @@ const STORAGE_HOST = 'resumes.r2';
 /** `<sha256 of user id>/<file name>`, as written by the app's ResumeService. */
 const STORAGE_KEY = /^[0-9a-f]{64}\/[a-z0-9.]+$/;
 
+/** Made-up host the container uses for AI chat completions (OpenAI-compatible). */
+const AI_HOST = 'ai.internal';
+
+/**
+ * Forwards the app's chat completion requests to the model through AI Gateway, so
+ * the container never holds AI credentials.
+ */
+async function aiChat(
+  request: Request,
+  env: Env,
+  _ctx: OutboundHandlerContext,
+): Promise<Response> {
+  const { pathname } = new URL(request.url);
+  if (request.method !== 'POST' || pathname !== '/v1/chat/completions') {
+    return Response.json({ error: 'Not found' }, { status: 404 });
+  }
+  const { model, ...input } = (await request.json()) as {
+    model?: string;
+  } & Record<string, unknown>;
+
+  try {
+    const result = (await env.AI.run(
+      (model || env.AI_MODEL) as Parameters<Env['AI']['run']>[0],
+      input as never,
+      { gateway: { id: env.AI_GATEWAY_ID } },
+    )) as unknown;
+    return Response.json(toChatCompletion(result));
+  } catch (err) {
+    console.error('AI request failed', err);
+    return Response.json(
+      { error: (err as Error).message ?? String(err) },
+      { status: 502 },
+    );
+  }
+}
+
+/** Accepts both the OpenAI shape and Workers AI's `{ response }` shape. */
+function toChatCompletion(result: unknown): unknown {
+  if (result && typeof result === 'object' && 'choices' in result) {
+    return result;
+  }
+  const response = (result as { response?: unknown } | null)?.response;
+  const content =
+    typeof response === 'string' ? response : JSON.stringify(response ?? result);
+  return { choices: [{ message: { role: 'assistant', content } }] };
+}
+
 /** Durable Object storage key for the hash of the settings the container started with. */
 const CONFIG_KEY = 'configFingerprint';
 
@@ -68,6 +115,8 @@ export class TesaApp extends Container<Env> {
       GOOGLE_CALLBACK_URL: env.GOOGLE_CALLBACK_URL,
       JWT_SECRET: env.JWT_SECRET,
       RESUME_STORAGE_URL: `http://${STORAGE_HOST}`,
+      AI_BASE_URL: `http://${AI_HOST}/v1`,
+      AI_MODEL: env.AI_MODEL,
     };
   }
 
@@ -101,7 +150,10 @@ export class TesaApp extends Container<Env> {
 
 // Assigned here rather than as a `static` class field: the field would shadow the
 // library's setter, which is what registers the handler with the container proxy.
-TesaApp.outboundByHost = { [STORAGE_HOST]: resumeObjects };
+TesaApp.outboundByHost = {
+  [STORAGE_HOST]: resumeObjects,
+  [AI_HOST]: aiChat,
+};
 
 export default {
   // A single app instance serves every request; sessions are stateless JWT cookies.

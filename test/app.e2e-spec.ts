@@ -1,7 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer, Server } from 'node:http';
+import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
@@ -26,6 +34,34 @@ writeFileSync(join(webDir, 'assets', 'app-abc123.js'), 'console.log("app")');
 process.env.WEB_DIR = webDir;
 
 const pdf = Buffer.from('%PDF-1.4\n%test resume\n');
+
+/** A stand-in for the AI (OpenAI-compatible chat completions), counting calls. */
+const ai = {
+  calls: 0,
+  lastBody: undefined as
+    { model?: string; messages?: { content: string }[] } | undefined,
+  reply: {} as unknown,
+};
+let aiServer: Server;
+beforeAll(async () => {
+  aiServer = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c: Buffer) => (body += c.toString()));
+    req.on('end', () => {
+      ai.calls++;
+      ai.lastBody = JSON.parse(body);
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(ai.reply) } }],
+        }),
+      );
+    });
+  });
+  await new Promise<void>((done) => aiServer.listen(0, '127.0.0.1', done));
+  process.env.AI_BASE_URL = `http://127.0.0.1:${(aiServer.address() as AddressInfo).port}/v1`;
+  process.env.AI_MODEL = 'google-ai-studio/test-model';
+});
+afterAll(() => aiServer.close());
 
 describe('App (e2e)', () => {
   let app: NestExpressApplication;
@@ -166,7 +202,7 @@ describe('App (e2e)', () => {
         .get('/api/resume')
         .set('Cookie', cookie)
         .expect(200)
-        .expect({ resume: null });
+        .expect({ resume: null, profile: null });
     });
 
     it('stores a PDF and returns it', async () => {
@@ -256,7 +292,126 @@ describe('App (e2e)', () => {
       await request(app.getHttpServer())
         .get('/api/resume')
         .set('Cookie', `access_token=${other}`)
-        .expect({ resume: null });
+        .expect({ resume: null, profile: null });
+    });
+
+    describe('analysis', () => {
+      beforeEach(() => {
+        ai.calls = 0;
+        ai.reply = {
+          name: 'Ada Lovelace',
+          headline: 'Data Analyst',
+          years: 6,
+          languages: ['English', 'Spanish'],
+          skills: [
+            {
+              skill: 'Data Analysis (Excel)',
+              level: 4,
+              evidence:
+                'Built weekly revenue dashboards in Excel with pivot tables',
+            },
+            { skill: 'SQL', level: 5, evidence: 'Wrote complex SQL queries' },
+            { skill: 'Juggling', level: 3, evidence: 'Data Analyst' },
+          ],
+        };
+      });
+
+      const analyze = (body?: object) =>
+        request(app.getHttpServer())
+          .post('/api/resume/analyze')
+          .set('Cookie', cookie)
+          .send(body ?? {});
+
+      it.each([['resume.pdf'], ['resume.docx']])(
+        'builds a profile from an uploaded %s',
+        async (name) => {
+          await upload(
+            readFileSync(join(import.meta.dirname, 'fixtures', name)),
+            name,
+          ).expect(201);
+          const res = await analyze().expect(200);
+
+          expect(res.body.profile).toEqual({
+            name: 'Ada Lovelace',
+            headline: 'Data Analyst',
+            years: 6,
+            languages: ['English', 'Spanish'],
+            // SQL's quote isn't in the resume and Juggling isn't a known skill.
+            skills: {
+              'Data Analysis (Excel)': {
+                level: 4,
+                evidence:
+                  'Built weekly revenue dashboards in Excel with pivot tables',
+              },
+            },
+          });
+          expect(ai.lastBody?.model).toBe('google-ai-studio/test-model');
+          expect(ai.lastBody?.messages?.at(-1)?.content).toContain(
+            'Built weekly revenue dashboards',
+          );
+        },
+      );
+
+      it('reuses the saved analysis until a new file is uploaded', async () => {
+        const text = Buffer.from(
+          'Ada Lovelace\nBuilt weekly revenue dashboards in Excel with pivot tables',
+        );
+        await upload(text, 'resume.txt').expect(201);
+        await analyze().expect(200);
+        await analyze().expect(200);
+        expect(ai.calls).toBe(1);
+
+        await request(app.getHttpServer())
+          .get('/api/resume')
+          .set('Cookie', cookie)
+          .expect((r) => expect(r.body.profile.name).toBe('Ada Lovelace'));
+
+        await upload(text, 'resume.txt').expect(201);
+        await request(app.getHttpServer())
+          .get('/api/resume')
+          .set('Cookie', cookie)
+          .expect((r) => expect(r.body.profile).toBeNull());
+        await analyze().expect(200);
+        expect(ai.calls).toBe(2);
+      });
+
+      it('analyzes pasted text without storing it', async () => {
+        const res = await analyze({
+          text: 'Ada Lovelace\nBuilt weekly revenue dashboards in Excel with pivot tables',
+        }).expect(200);
+        expect(Object.keys(res.body.profile.skills)).toEqual([
+          'Data Analysis (Excel)',
+        ]);
+        await request(app.getHttpServer())
+          .get('/api/resume')
+          .set('Cookie', cookie)
+          .expect({ resume: null, profile: null });
+      });
+
+      it('asks for a resume when there is nothing to analyze', async () => {
+        const res = await analyze().expect(400);
+        expect(res.body.message).toBe('Add your resume first.');
+      });
+
+      it('explains when the AI is not configured', async () => {
+        await app.close();
+        const saved = process.env.AI_BASE_URL;
+        process.env.AI_BASE_URL = '';
+        try {
+          const moduleFixture = await Test.createTestingModule({
+            imports: [AppModule],
+          }).compile();
+          app = moduleFixture.createNestApplication<NestExpressApplication>();
+          setupApp(app);
+          await app.init();
+          const res = await analyze({ text: 'Ada Lovelace, analyst' }).expect(
+            503,
+          );
+          expect(res.body.message).toMatch(/not configured/);
+        } finally {
+          process.env.AI_BASE_URL = saved;
+        }
+      });
     });
 
     it('requires a login', () => {
