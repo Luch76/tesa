@@ -55,7 +55,21 @@ export function ProfilePage() {
       toast.error(t("Choose a PDF, DOCX, or text file", "Elige un archivo PDF, DOCX o de texto"));
       return;
     }
+    // A new resume starts everything anew: profile, analysis, tutor evidence and simulations.
+    const hadProgress = state.analyzed;
+    reset();
     setFile(f.name);
+    if (hadProgress) {
+      toast.info(
+        t("Starting fresh with your new resume", "Empezando de nuevo con tu nuevo currículum"),
+        {
+          description: t(
+            "Analyze it to rebuild your profile.",
+            "Analízalo para reconstruir tu perfil.",
+          ),
+        },
+      );
+    }
     uploading.current = saveToAccount(f);
     if (/\.txt$/i.test(f.name)) update({ resume: await f.text() });
   }
@@ -101,6 +115,19 @@ export function ProfilePage() {
   }
   return (
     <>
+      <input
+        ref={input}
+        type="file"
+        accept=".pdf,.docx,.txt"
+        className="hidden"
+        aria-label={t("Upload resume", "Subir currículum")}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          // Clear the picker so choosing the same file again still triggers a new upload.
+          e.target.value = "";
+          if (f) void acceptFile(f);
+        }}
+      />
       <PageHeading
         eyebrow={t("Built for your next move", "Para tu próximo paso")}
         title={t("Your experience. New possibilities.", "Tu experiencia. Nuevas posibilidades.")}
@@ -137,17 +164,6 @@ export function ProfilePage() {
                   </span>
                 </div>
                 <div className="panel-body">
-                  <input
-                    ref={input}
-                    type="file"
-                    accept=".pdf,.docx,.txt"
-                    className="hidden"
-                    aria-label={t("Upload resume", "Subir currículum")}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) void acceptFile(f);
-                    }}
-                  />
                   <div
                     className={`dropzone ${drag ? "dragging" : ""}`}
                     role="button"
@@ -235,11 +251,17 @@ export function ProfilePage() {
             <section className="panel">
               <div className="panel-head">
                 <h2>{t("Your skill snapshot", "Tu resumen de habilidades")}</h2>
-                <span className="pill sample">
-                  {state.source === "sample"
-                    ? t("Sample profile", "Perfil de ejemplo")
-                    : t("From your resume", "De tu currículum")}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="pill sample">
+                    {state.source === "sample"
+                      ? t("Sample profile", "Perfil de ejemplo")
+                      : t("From your resume", "De tu currículum")}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={() => input.current?.click()}>
+                    <Upload />
+                    {t("Upload new resume", "Subir nuevo currículum")}
+                  </Button>
+                </div>
               </div>
               <div className="panel-body">
                 <div className="profile-summary">
@@ -248,12 +270,9 @@ export function ProfilePage() {
                     <h3 className="profile-name">
                       {state.profile.name || t("Your profile", "Tu perfil")}
                     </h3>
-                    <p className="profile-meta">
-                      {t(
-                        "Front Desk Supervisor · Hospitality",
-                        "Supervisora de recepción · Hospitalidad",
-                      )}
-                    </p>
+                    {state.profile.headline && (
+                      <p className="profile-meta">{state.profile.headline}</p>
+                    )}
                   </div>
                 </div>
                 <div className="tags">
@@ -263,7 +282,9 @@ export function ProfilePage() {
                       `${state.profile.years} años de experiencia`,
                     )}
                   </span>
-                  <span className="tag">{t("English + Spanish", "Inglés + Español")}</span>
+                  {state.profile.languages.length > 0 && (
+                    <span className="tag">{state.profile.languages.join(" + ")}</span>
+                  )}
                 </div>
                 <div className="stat-row">
                   <div className="stat">
