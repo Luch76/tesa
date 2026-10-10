@@ -13,6 +13,8 @@ ENV NODE_ENV=production PORT=3000
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# Uploaded resumes live here; mount a volume at /app/data to keep them.
+RUN mkdir -p /app/data/uploads && chown -R node:node /app/data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

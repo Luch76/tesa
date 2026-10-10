@@ -17,6 +17,10 @@ const baseStyles = `
     --border: #d8dee4;
     --accent: #0b6bcb;
     --accent-soft: #e6f0fb;
+    --on-accent: #ffffff;
+    --success: #1a7f37;
+    --success-soft: #e8f5ec;
+    --danger-soft: #fdecec;
     --danger: #c62828;
     --radius: 14px;
     --tabbar-h: 64px;
@@ -30,6 +34,10 @@ const baseStyles = `
       --border: #2b323b;
       --accent: #5aa7f0;
       --accent-soft: #1b2b3d;
+      --on-accent: #0f1216;
+      --success: #4ac26b;
+      --success-soft: #16291d;
+      --danger-soft: #3a1d1d;
       --danger: #ef6b6b;
     }
   }
@@ -67,6 +75,8 @@ const baseStyles = `
   }
   .button:active { transform: scale(0.98); }
   .button.danger { color: var(--danger); }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .button:disabled { opacity: 0.5; cursor: not-allowed; }
   :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 `;
 

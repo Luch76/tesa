@@ -1,6 +1,8 @@
 import type { AuthUser } from '../auth/user.js';
 import { document, escapeHtml } from './html.js';
 import { icons } from './icons.js';
+import { Flash, resumePanel, resumeStyles } from './resume.view.js';
+import type { ResumeInfo } from '../resume/resume.service.js';
 
 export const TABS = [
   { id: 'resume', label: 'Resume', path: '/resume' },
@@ -9,6 +11,12 @@ export const TABS = [
 ] as const;
 
 export type TabId = (typeof TABS)[number]['id'];
+
+export interface TabContext {
+  user: AuthUser;
+  resume?: ResumeInfo | null;
+  flash?: Flash;
+}
 
 const styles = `
   .app-header {
@@ -81,7 +89,7 @@ const styles = `
     margin-bottom: 1rem;
   }
   .empty { text-align: center; padding: 2rem 1.25rem; }
-  .empty .empty-icon {
+  .empty-icon {
     display: inline-grid;
     place-items: center;
     width: 56px;
@@ -145,20 +153,15 @@ const emptyState = (iconSvg: string, title: string, text: string) => `
     <p>${text}</p>
   </section>`;
 
-const panels: Record<TabId, (user: AuthUser) => string> = {
-  resume: () =>
-    emptyState(
-      icons.resume,
-      'Your resume',
-      'Build and polish your resume here. Coming soon.',
-    ),
+const panels: Record<TabId, (ctx: TabContext) => string> = {
+  resume: ({ resume, flash }) => resumePanel(resume ?? null, flash),
   socratic: () =>
     emptyState(
       icons.socratic,
       'Socratic Learning',
       'Learn by working through guided questions instead of being handed answers. Coming soon.',
     ),
-  settings: (user) => `
+  settings: ({ user }) => `
     <h2 class="section-title">Profile</h2>
     <section class="card profile">
       ${avatar(user)}
@@ -175,7 +178,8 @@ const panels: Record<TabId, (user: AuthUser) => string> = {
     </section>`,
 };
 
-export const tabView = (active: TabId, user: AuthUser) => {
+export const tabView = (active: TabId, ctx: TabContext) => {
+  const { user } = ctx;
   const tab = TABS.find((t) => t.id === active)!;
   const nav = TABS.map(
     (t) =>
@@ -189,7 +193,7 @@ export const tabView = (active: TabId, user: AuthUser) => {
       <a href="/settings" aria-label="Settings">${avatar(user)}</a>
     </header>
     <nav class="tabbar" aria-label="Main">${nav}</nav>
-    <main class="content">${panels[active](user)}</main>`,
-    styles,
+    <main class="content">${panels[active](ctx)}</main>`,
+    styles + (active === 'resume' ? resumeStyles : ''),
   );
 };

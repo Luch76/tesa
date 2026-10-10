@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import cookieParser from 'cookie-parser';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from './../src/app.module.js';
@@ -10,6 +13,10 @@ process.env.GOOGLE_CLIENT_ID = 'test-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
 process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/auth/google/callback';
 process.env.JWT_SECRET = 'test-jwt-secret';
+const uploadDir = mkdtempSync(join(tmpdir(), 'tesa-uploads-'));
+process.env.UPLOAD_DIR = uploadDir;
+
+const pdf = Buffer.from('%PDF-1.4\n%test resume\n');
 
 describe('App (e2e)', () => {
   let app: INestApplication<App>;
@@ -133,6 +140,111 @@ describe('App (e2e)', () => {
       .expect(303)
       .expect('Location', '/login');
     expect(String(res.headers['set-cookie'])).toMatch(/access_token=;/);
+  });
+
+  describe('resume upload', () => {
+    afterEach(() => {
+      rmSync(uploadDir, { recursive: true, force: true });
+    });
+
+    it('stores a PDF and shows it on the Resume tab', async () => {
+      await request(app.getHttpServer())
+        .post('/resume')
+        .set('Cookie', cookie)
+        .attach('resume', pdf, 'Ada Résumé.pdf')
+        .expect(303)
+        .expect('Location', '/resume?uploaded=1');
+
+      await request(app.getHttpServer())
+        .get('/resume?uploaded=1')
+        .set('Cookie', cookie)
+        .expect(200)
+        .expect(/Ada Résumé\.pdf/)
+        .expect(/Resume uploaded\./);
+
+      const file = await request(app.getHttpServer())
+        .get('/resume/file')
+        .set('Cookie', cookie)
+        .expect(200)
+        .expect('Content-Type', 'application/pdf')
+        .expect('X-Content-Type-Options', 'nosniff');
+      expect(file.headers['content-disposition']).toMatch(/^inline;/);
+      expect(Buffer.from(file.body as Buffer).equals(pdf)).toBe(true);
+    });
+
+    it('rejects a file whose contents are not a PDF or Word document', () => {
+      return request(app.getHttpServer())
+        .post('/resume')
+        .set('Cookie', cookie)
+        .attach('resume', Buffer.from('<html>not a pdf</html>'), 'resume.pdf')
+        .expect(303)
+        .expect('Location', '/resume?error=type');
+    });
+
+    it('rejects files over 5 MB', () => {
+      return request(app.getHttpServer())
+        .post('/resume')
+        .set('Cookie', cookie)
+        .attach(
+          'resume',
+          Buffer.concat([pdf, Buffer.alloc(5 * 1024 * 1024)]),
+          'big.pdf',
+        )
+        .expect(303)
+        .expect('Location', '/resume?error=too-large');
+    });
+
+    it('asks for a file when none is chosen', () => {
+      return request(app.getHttpServer())
+        .post('/resume')
+        .set('Cookie', cookie)
+        .field('nothing', '')
+        .expect(303)
+        .expect('Location', '/resume?error=missing');
+    });
+
+    it('removes the resume', async () => {
+      await request(app.getHttpServer())
+        .post('/resume')
+        .set('Cookie', cookie)
+        .attach('resume', pdf, 'resume.pdf')
+        .expect(303);
+      await request(app.getHttpServer())
+        .post('/resume/delete')
+        .set('Cookie', cookie)
+        .expect(303)
+        .expect('Location', '/resume?removed=1');
+      await request(app.getHttpServer())
+        .get('/resume/file')
+        .set('Cookie', cookie)
+        .set('Accept', 'application/json')
+        .expect(404);
+    });
+
+    it('keeps each user’s resume separate', async () => {
+      await request(app.getHttpServer())
+        .post('/resume')
+        .set('Cookie', cookie)
+        .attach('resume', pdf, 'resume.pdf')
+        .expect(303);
+      const other = await app.get(JwtService).signAsync({
+        sub: '99',
+        email: 'grace@example.com',
+        name: 'Grace Hopper',
+      });
+      await request(app.getHttpServer())
+        .get('/resume/file')
+        .set('Cookie', `access_token=${other}`)
+        .set('Accept', 'application/json')
+        .expect(404);
+    });
+
+    it('requires a login to upload', () => {
+      return request(app.getHttpServer())
+        .post('/resume')
+        .attach('resume', pdf, 'resume.pdf')
+        .expect(401);
+    });
   });
 
   afterEach(async () => {

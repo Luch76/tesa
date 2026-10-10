@@ -1,5 +1,5 @@
-import { Controller, Get, Header, Redirect } from '@nestjs/common';
-import { AppService } from './app.service.js';
+import { Controller, Get, Header, Query, Redirect } from '@nestjs/common';
+import { AppService, type ResumeQuery } from './app.service.js';
 import { CurrentUser } from './auth/current-user.decorator.js';
 import { Public } from './auth/public.decorator.js';
 import type { AuthUser } from './auth/user.js';
@@ -15,8 +15,11 @@ export class AppController {
 
   @Get('resume')
   @Header('Content-Type', 'text/html; charset=utf-8')
-  getResume(@CurrentUser() user: AuthUser): string {
-    return this.appService.getTab('resume', user);
+  getResume(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ResumeQuery,
+  ): Promise<string> {
+    return this.appService.getResumeTab(user, query);
   }
 
   @Get('socratic')

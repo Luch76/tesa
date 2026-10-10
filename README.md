@@ -21,7 +21,10 @@ Endpoints:
 | Route | Auth | Description |
 | --- | --- | --- |
 | `GET /` | required | Redirects to the first tab (`/resume`) |
-| `GET /resume` | required | Resume tab |
+| `GET /resume` | required | Resume tab: upload, view, replace or remove your resume |
+| `POST /resume` | required | Upload a resume (multipart field `resume`) |
+| `GET /resume/file` | required | The signed-in user's resume |
+| `POST /resume/delete` | required | Remove the signed-in user's resume |
 | `GET /socratic` | required | Socratic Learning tab |
 | `GET /settings` | required | Settings tab: profile and log out |
 | `GET /login` | public | Login page with the "Login with Google" button |
@@ -68,7 +71,11 @@ npm run docker:run     # docker run --rm -p 3000:3000 --env-file .env tesa
 docker compose up --build
 ```
 
-The image is a multi-stage `node:22-alpine` build that runs as the non-root `node` user and has a health check on `/health`.
+The image is a multi-stage `node:22-alpine` build that runs as the non-root `node` user and has a health check on `/health`. Docker Compose keeps uploaded resumes on the `app-data` volume, so they survive rebuilds; `docker compose down -v` deletes them.
+
+## Resume uploads
+
+Each user has one resume (uploading again replaces it). PDF, DOC and DOCX files up to 5 MB are accepted; the type is checked from the file's contents, not just its extension. Files are stored under `UPLOAD_DIR` in a folder named after a hash of the user's Google ID, so other users can't reach them.
 
 ## Configuration
 
@@ -80,5 +87,6 @@ The image is a multi-stage `node:22-alpine` build that runs as the non-root `nod
 | `GOOGLE_CALLBACK_URL` | (required) | Must match an authorized redirect URI on the client. If it starts with `https://`, the cookie is marked `Secure` |
 | `JWT_SECRET` | (required) | Secret that signs session tokens |
 | `JWT_EXPIRES_IN_SECONDS` | `86400` | How long a login lasts |
+| `UPLOAD_DIR` | `./data/uploads` | Where uploaded resumes are stored |
 
 Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.
