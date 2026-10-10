@@ -11,14 +11,33 @@ A [NestJS](https://nestjs.com/) (TypeScript) web app for Hack for Humanity Miami
 ## Develop
 
 ```bash
+cp .env.example .env   # then fill in the Google credentials (see below)
 npm install
 npm run start:dev      # http://localhost:3000, reloads on change
 ```
 
 Endpoints:
 
-- `GET /` returns `Hello World!`
-- `GET /health` returns `{"status":"ok"}`
+| Route | Auth | Description |
+| --- | --- | --- |
+| `GET /` | required | Home page for the signed-in user |
+| `GET /login` | public | Login page with the "Login with Google" button |
+| `GET /auth/google` | public | Starts Google sign-in |
+| `GET /auth/google/callback` | public | Google redirects here after sign-in |
+| `GET /auth/me` | required | The signed-in user as JSON |
+| `POST /auth/logout` | public | Clears the session cookie |
+| `GET /health` | public | Returns `{"status":"ok"}` |
+
+Every route requires a login unless it is marked `@Public()`. Browsers without a session are redirected to `/login`; API clients get a `401`.
+
+## Login with Google
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/apis/credentials), configure the OAuth consent screen, then create an **OAuth client ID** of type **Web application**.
+2. Add `http://localhost:3000/auth/google/callback` as an **Authorized redirect URI** (add your deployed URL's callback too, when you have one).
+3. Put the client ID and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+4. Set `JWT_SECRET` to a random value, e.g. `openssl rand -hex 32`.
+
+After Google sign-in, the app stores a signed JWT in an HTTP-only `access_token` cookie.
 
 ## Test and lint
 
@@ -39,7 +58,7 @@ npm run start:prod
 
 ```bash
 npm run docker:build   # docker build -t tesa .
-npm run docker:run     # docker run --rm -p 3000:3000 tesa
+npm run docker:run     # docker run --rm -p 3000:3000 --env-file .env tesa
 # or
 docker compose up --build
 ```
@@ -51,3 +70,10 @@ The image is a multi-stage `node:22-alpine` build that runs as the non-root `nod
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `3000` | Port the server listens on |
+| `GOOGLE_CLIENT_ID` | (required) | OAuth client ID from Google Cloud |
+| `GOOGLE_CLIENT_SECRET` | (required) | OAuth client secret from Google Cloud |
+| `GOOGLE_CALLBACK_URL` | (required) | Must match an authorized redirect URI on the client. If it starts with `https://`, the cookie is marked `Secure` |
+| `JWT_SECRET` | (required) | Secret that signs session tokens |
+| `JWT_EXPIRES_IN_SECONDS` | `86400` | How long a login lasts |
+
+Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.
