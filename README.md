@@ -77,6 +77,28 @@ The image is a multi-stage `node:22-alpine` build that runs as the non-root `nod
 
 Each user has one resume (uploading again replaces it). PDF, DOC and DOCX files up to 5 MB are accepted; the type is checked from the file's contents, not just its extension. Files are stored under `UPLOAD_DIR` in a folder named after a hash of the user's Google ID, so other users can't reach them.
 
+## Deploy to Cloudflare
+
+Production runs at **https://tesa.micahberkley.workers.dev** as a [Cloudflare Container](https://developers.cloudflare.com/containers/): `wrangler` builds the repo's `Dockerfile` (for `linux/amd64`), and a small Worker in `cloudflare/` sends every request to a single app instance. The instance sleeps after 15 idle minutes; the next request wakes it in a few seconds.
+
+Container disks are temporary, so resumes live in the R2 bucket `tesa-resumes`. The app sets `RESUME_STORAGE_URL=http://resumes.r2`; the Worker answers those requests with its R2 binding, so no R2 keys are needed.
+
+Requirements: Docker running locally, and `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` in `.env` (Workers Paid plan; token with Workers Scripts, Containers and Workers R2 Storage edit permissions).
+
+```bash
+cd cloudflare
+npm install
+set -a; eval "$(grep -E '^CLOUDFLARE_(API_TOKEN|ACCOUNT_ID)=' ../.env)"; set +a
+npx wrangler deploy --containers-rollout immediate
+```
+
+Configuration:
+
+- `GOOGLE_CALLBACK_URL` is a var in `cloudflare/wrangler.jsonc`. It must also be an authorized redirect URI on the Google OAuth client.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `JWT_SECRET` are Worker secrets. Update them with `npx wrangler deploy --secrets-file <file>` (or `npx wrangler secret put <NAME>`).
+- A running container keeps the environment it started with. The Worker restarts it when the configuration changes, but this can lag by a few minutes; at the latest it applies after the next idle sleep.
+- Logs: `npx wrangler tail`.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -87,6 +109,7 @@ Each user has one resume (uploading again replaces it). PDF, DOC and DOCX files 
 | `GOOGLE_CALLBACK_URL` | (required) | Must match an authorized redirect URI on the client. If it starts with `https://`, the cookie is marked `Secure` |
 | `JWT_SECRET` | (required) | Secret that signs session tokens |
 | `JWT_EXPIRES_IN_SECONDS` | `86400` | How long a login lasts |
-| `UPLOAD_DIR` | `./data/uploads` | Where uploaded resumes are stored |
+| `UPLOAD_DIR` | `./data/uploads` | Where uploaded resumes are stored (local disk) |
+| `RESUME_STORAGE_URL` | (unset) | If set, store resumes through this HTTP object API instead of `UPLOAD_DIR` (used on Cloudflare) |
 
 Values are read from the environment, and from `.env` when present. Docker Compose passes `.env` to the container; it is never baked into the image.

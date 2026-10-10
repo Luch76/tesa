@@ -1,8 +1,10 @@
 import { Injectable, UnsupportedMediaTypeException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename } from 'node:path';
+import { ResumeStorage, resumeStorageFor } from './resume.storage.js';
+
+const META = 'meta.json';
 
 export const RESUME_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -44,12 +46,13 @@ interface StoredResume extends ResumeInfo {
 
 @Injectable()
 export class ResumeService {
-  private readonly root: string;
+  private readonly storage: ResumeStorage;
 
   constructor(config: ConfigService) {
-    this.root = resolve(
-      config.get<string>('UPLOAD_DIR') ?? join('data', 'uploads'),
-    );
+    this.storage = resumeStorageFor({
+      storageUrl: config.get<string>('RESUME_STORAGE_URL'),
+      uploadDir: config.get<string>('UPLOAD_DIR'),
+    });
   }
 
   async save(userId: string, file: Express.Multer.File): Promise<ResumeInfo> {
@@ -65,10 +68,7 @@ export class ResumeService {
       );
     }
 
-    const dir = this.userDir(userId);
-    await rm(dir, { recursive: true, force: true });
-    await mkdir(dir, { recursive: true });
-
+    const previous = await this.readMeta(userId);
     const stored: StoredResume = {
       originalName: cleanFileName(file.originalname),
       mimeType: format.mimeType,
@@ -76,8 +76,19 @@ export class ResumeService {
       uploadedAt: new Date().toISOString(),
       storedName: `resume.${format.ext}`,
     };
-    await writeFile(join(dir, stored.storedName), file.buffer);
-    await writeFile(join(dir, 'meta.json'), JSON.stringify(stored));
+    await this.storage.put(
+      this.key(userId, stored.storedName),
+      file.buffer,
+      stored.mimeType,
+    );
+    await this.storage.put(
+      this.key(userId, META),
+      Buffer.from(JSON.stringify(stored)),
+      'application/json',
+    );
+    if (previous && previous.storedName !== stored.storedName) {
+      await this.storage.delete(this.key(userId, previous.storedName));
+    }
     return toInfo(stored);
   }
 
@@ -91,31 +102,27 @@ export class ResumeService {
   ): Promise<{ info: ResumeInfo; data: Buffer } | null> {
     const stored = await this.readMeta(userId);
     if (!stored) return null;
-    const data = await readFile(join(this.userDir(userId), stored.storedName));
-    return { info: toInfo(stored), data };
+    const data = await this.storage.get(this.key(userId, stored.storedName));
+    return data && { info: toInfo(stored), data };
   }
 
   async remove(userId: string): Promise<void> {
-    await rm(this.userDir(userId), { recursive: true, force: true });
+    const stored = await this.readMeta(userId);
+    if (stored) {
+      await this.storage.delete(this.key(userId, stored.storedName));
+    }
+    await this.storage.delete(this.key(userId, META));
   }
 
   private async readMeta(userId: string): Promise<StoredResume | null> {
-    try {
-      const json = await readFile(
-        join(this.userDir(userId), 'meta.json'),
-        'utf8',
-      );
-      return JSON.parse(json) as StoredResume;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-      throw err;
-    }
+    const json = await this.storage.get(this.key(userId, META));
+    return json && (JSON.parse(json.toString('utf8')) as StoredResume);
   }
 
-  /** Hashing the Google user id keeps the path safe and free of personal data. */
-  private userDir(userId: string): string {
-    const key = createHash('sha256').update(userId).digest('hex');
-    return join(this.root, key);
+  /** Hashing the Google user id keeps keys safe and free of personal data. */
+  private key(userId: string, name: string): string {
+    const user = createHash('sha256').update(userId).digest('hex');
+    return `${user}/${name}`;
   }
 }
 

@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tesa",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "observability": { "enabled": true },
+
+  // The NestJS app, built from the repo's Dockerfile and run as a Cloudflare Container.
+  "containers": [
+    {
+      "class_name": "TesaApp",
+      "image": "../Dockerfile",
+      "image_build_context": "..",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "APP", "class_name": "TesaApp" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TesaApp"] }],
+
+  // Uploaded resumes. Container disks are temporary, so files live here instead.
+  "r2_buckets": [{ "binding": "RESUMES", "bucket_name": "tesa-resumes" }],
+
+  "vars": {
+    // Must also be an authorized redirect URI on the Google OAuth client.
+    "GOOGLE_CALLBACK_URL": "https://tesa.micahberkley.workers.dev/auth/google/callback"
+  }
+  // Secrets (set with `wrangler secret put`): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, JWT_SECRET
+}

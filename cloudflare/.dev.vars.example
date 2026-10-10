@@ -1,0 +1,4 @@
+# Secrets for local `wrangler dev`. Production secrets are set with `wrangler secret put`.
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+JWT_SECRET=change-me
