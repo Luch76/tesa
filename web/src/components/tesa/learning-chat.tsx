@@ -31,8 +31,15 @@ type Recognition = {
   interimResults: boolean;
   start: () => void;
   stop: () => void;
+  abort?: () => void;
   onresult:
-    | ((event: { results: { [key: number]: { [key: number]: { transcript: string } } } }) => void)
+    | ((event: {
+        resultIndex: number;
+        results: {
+          length: number;
+          [key: number]: { isFinal: boolean; [key: number]: { transcript: string } };
+        };
+      }) => void)
     | null;
   onend: (() => void) | null;
   onerror: ((event: { error: string }) => void) | null;
@@ -53,6 +60,9 @@ function simulationOpening(job: Job, spanish: boolean) {
       : `I need your help. This situation—${job.scn.name.toLowerCase()}—is affecting my day, and I need a clear solution. What can you do?`;
 }
 
+/** Silent listening rounds (each ends after a few seconds without speech) before voice chat pauses. */
+const MAX_SILENT_ROUNDS = 4;
+
 export function LearningChat({
   simulation = false,
   jobId,
@@ -72,11 +82,16 @@ export function LearningChat({
     [busy, setBusy] = useState(false),
     [read, setRead] = useState(false),
     [listening, setListening] = useState(false),
-    [voiceFirst, setVoiceFirst] = useState(false),
+    [talking, setTalking] = useState(false),
     [scored, setScored] = useState(false),
     [speaking, setSpeaking] = useState(false),
     [reacting, setReacting] = useState(false);
   const rec = useRef<Recognition | null>(null);
+  // Voice conversation: recognition and speech callbacks outlive renders, so they read these refs.
+  const talkingRef = useRef(false);
+  const submitRef = useRef<(answer: string) => Promise<void>>(async () => {});
+  const listenRef = useRef<() => void>(() => {});
+  const silentRounds = useRef(0);
   const session = useRef("");
   const submitted = useRef("");
   const userCount = turns.filter((t) => t.role === "user").length;
@@ -105,20 +120,41 @@ export function LearningChat({
     setSpeaking(false);
     setListening(false);
     return () => {
-      rec.current?.stop();
-      window.speechSynthesis?.cancel();
+      endConversation();
     };
   }, [job.id, skill, simulation, es]);
-  function say(reply: string) {
-    if (!read || !window.speechSynthesis) return;
-    const speech = new SpeechSynthesisUtterance(reply);
-    speech.lang = es ? "es-US" : "en-US";
-    speech.onstart = () => setSpeaking(true);
-    speech.onend = () => setSpeaking(false);
-    speech.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(speech);
+  /**
+   * Speaks a reply when "Read replies aloud" is on or a voice conversation is running,
+   * then calls `onDone`. Sentences are queued separately because Chrome stops speaking
+   * long single utterances partway through.
+   */
+  function say(reply: string, onDone?: () => void) {
+    const synth = window.speechSynthesis;
+    if (!(read || talkingRef.current) || !synth) {
+      onDone?.();
+      return;
+    }
+    synth.cancel();
+    const sentences = reply.match(/[^.!?¿¡]+[.!?]*\s*/g) ?? [reply];
+    setSpeaking(true);
+    sentences.forEach((sentence, i) => {
+      const speech = new SpeechSynthesisUtterance(sentence.trim());
+      speech.lang = es ? "es-US" : "en-US";
+      if (i === sentences.length - 1) {
+        speech.onend = () => {
+          setSpeaking(false);
+          onDone?.();
+        };
+        speech.onerror = () => {
+          setSpeaking(false);
+          onDone?.();
+        };
+      }
+      synth.speak(speech);
+    });
   }
   function stop() {
+    endConversation();
     // A new session makes the pending AI reply be ignored when it arrives.
     session.current = crypto.randomUUID();
     setBusy(false);
@@ -127,27 +163,25 @@ export function LearningChat({
     window.speechSynthesis?.cancel();
     setSpeaking(false);
   }
-  function voice() {
-    if (listening) {
-      rec.current?.stop();
-      setListening(false);
-      return;
-    }
+  /** Listens for one spoken answer; when the speaker pauses, sends it to the coach. */
+  function listen() {
+    if (!talkingRef.current) return;
     const w = window as unknown as {
       SpeechRecognition?: new () => Recognition;
       webkitSpeechRecognition?: new () => Recognition;
     };
     const Constructor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!Constructor) {
+      endConversation();
       toast.info(
         t(
-          "Voice input isn’t available in this browser",
-          "La entrada de voz no está disponible en este navegador",
+          "Voice chat isn’t available in this browser",
+          "El chat de voz no está disponible en este navegador",
         ),
         {
           description: t(
-            "Use typing, or try Chrome for microphone input.",
-            "Escribe tu respuesta o prueba Chrome para usar el micrófono.",
+            "Type your answers, or try Chrome or Safari for voice.",
+            "Escribe tus respuestas o prueba Chrome o Safari para usar la voz.",
           ),
         },
       );
@@ -156,21 +190,71 @@ export function LearningChat({
     const recognition = new Constructor();
     rec.current = recognition;
     recognition.lang = es ? "es-US" : "en-US";
+    // Not continuous: the browser ends recognition when the speaker pauses, which ends the turn.
     recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.onresult = (e) =>
-      setText((prev) => `${prev} ${e.results[0]?.[0]?.transcript ?? ""}`.trim());
-    recognition.onend = () => setListening(false);
-    recognition.onerror = (e) => {
+    recognition.interimResults = true;
+    let heard = "";
+    recognition.onresult = (e) => {
+      let interim = "";
+      heard = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const piece = e.results[i]?.[0]?.transcript ?? "";
+        if (e.results[i]?.isFinal) heard += piece;
+        else interim += piece;
+      }
+      setText(`${heard}${interim}`.trim());
+    };
+    recognition.onend = () => {
       setListening(false);
-      toast.error(t(`Microphone: ${e.error}`, `Micrófono: ${e.error}`));
+      if (!talkingRef.current) return;
+      if (heard.trim()) {
+        silentRounds.current = 0;
+        void submitRef.current(heard);
+      } else if (++silentRounds.current >= MAX_SILENT_ROUNDS) {
+        // Nobody has spoken for a while: stop rather than listen forever.
+        endConversation();
+        toast.info(t("Voice chat paused", "Chat de voz en pausa"), {
+          description: t(
+            "Tap Talk when you’re ready to continue.",
+            "Toca Hablar cuando quieras seguir.",
+          ),
+        });
+      } else {
+        listenRef.current();
+      }
+    };
+    recognition.onerror = (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      endConversation();
+      toast.error(
+        e.error === "not-allowed"
+          ? t("Microphone access was blocked", "Se bloqueó el acceso al micrófono")
+          : t(`Microphone: ${e.error}`, `Micrófono: ${e.error}`),
+      );
     };
     try {
       recognition.start();
       setListening(true);
     } catch {
+      endConversation();
       toast.error(t("Could not start the microphone", "No se pudo iniciar el micrófono"));
     }
+  }
+  function startConversation() {
+    silentRounds.current = 0;
+    talkingRef.current = true;
+    setTalking(true);
+    setText("");
+    listen();
+  }
+  function endConversation() {
+    talkingRef.current = false;
+    setTalking(false);
+    setListening(false);
+    rec.current?.abort?.();
+    rec.current?.stop();
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
   }
   /** The conversation context the AI coach needs, with `turnsSoFar` as the transcript. */
   function coachRequest(turnsSoFar: Turn[]): CoachRequest {
@@ -210,10 +294,13 @@ export function LearningChat({
           at: new Date().toISOString(),
           session: sessionId,
         });
-      say(reply);
+      say(reply, () => {
+        if (talkingRef.current) listenRef.current();
+      });
     } catch (error) {
       if (session.current !== sessionId) return;
       // Put the answer back so the learner can send it again.
+      endConversation();
       setTurns(turns);
       setText(value);
       toast.error(t("The coach couldn’t reply", "El coach no pudo responder"), {
@@ -223,6 +310,8 @@ export function LearningChat({
       if (session.current === sessionId) setBusy(false);
     }
   }
+  submitRef.current = submit;
+  listenRef.current = listen;
   async function finish() {
     if (!canEndSimulation(turns) || busy || scored) return;
     const sessionId = session.current;
@@ -240,6 +329,7 @@ export function LearningChat({
         turns,
         at: new Date().toISOString(),
       };
+      endConversation();
       addSimulation(sim);
       setScored(true);
       onFinish?.(sim);
@@ -317,39 +407,6 @@ export function LearningChat({
               </p>
             </div>
           </div>
-          {voiceFirst && (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <Button
-                variant="ghost"
-                className="avatar-voice-button"
-                aria-label={
-                  listening
-                    ? t("Stop microphone", "Detener micrófono")
-                    : t("Start microphone", "Iniciar micrófono")
-                }
-                onClick={voice}
-              >
-                <CoachAvatar
-                  activity={
-                    listening
-                      ? "listening"
-                      : busy
-                        ? "thinking"
-                        : speaking
-                          ? "speaking"
-                          : reacting
-                            ? "celebrating"
-                            : "idle"
-                  }
-                />
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                {listening
-                  ? t("Listening…", "Escuchando…")
-                  : t("Ready when you are", "Listo cuando tú lo estés")}
-              </span>
-            </div>
-          )}
           <Conversation className="transcript" aria-live="polite">
             <ConversationContent className="px-0 py-5">
               {turns.map((turn, i) => (
@@ -395,19 +452,35 @@ export function LearningChat({
               <PromptInputFooter className="justify-between">
                 <Button
                   type="button"
-                  variant={listening ? "bay" : "ghost"}
-                  size="icon-sm"
-                  onClick={voice}
-                  disabled={busy || scored}
+                  variant={talking ? "bay" : "ghost"}
+                  size="sm"
+                  onClick={talking ? endConversation : startConversation}
+                  disabled={scored || (busy && !talking)}
+                  aria-pressed={talking}
                   aria-label={
-                    listening
-                      ? t("Stop microphone", "Detener micrófono")
-                      : t("Speak your answer", "Dictar respuesta")
+                    talking
+                      ? t("End voice conversation", "Terminar conversación de voz")
+                      : t("Start voice conversation", "Iniciar conversación de voz")
                   }
-                  title={t("Speak your answer", "Dictar respuesta")}
                 >
-                  {listening ? <MicOff /> : <Mic />}
+                  {talking ? <MicOff /> : <Mic />}
+                  {talking ? t("End voice chat", "Terminar voz") : t("Talk", "Hablar")}
                 </Button>
+                {talking && (
+                  <span className="voice-status" role="status" aria-live="polite">
+                    <i className={`voice-dot ${listening ? "live" : ""}`} aria-hidden="true" />
+                    {listening
+                      ? t(
+                          "Listening… pause when you’re done",
+                          "Escuchando… haz una pausa al terminar",
+                        )
+                      : busy
+                        ? t("Thinking…", "Pensando…")
+                        : speaking
+                          ? t("Speaking…", "Hablando…")
+                          : t("Your turn", "Tu turno")}
+                  </span>
+                )}
                 <PromptInputSubmit
                   status={busy ? "submitted" : "ready"}
                   disabled={!busy && (!text.trim() || scored)}
@@ -431,14 +504,6 @@ export function LearningChat({
                 />
                 <Volume2 size={12} />
                 {t("Read replies aloud", "Leer respuestas en voz alta")}
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={voiceFirst}
-                  onChange={(e) => setVoiceFirst(e.target.checked)}
-                />
-                {t("Voice first", "Priorizar voz")}
               </label>
             </div>
             <p className="helper">

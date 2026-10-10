@@ -1054,8 +1054,11 @@
   margin: 0;
 }
 .transcript {
-  height: 400px;
-  min-height: 280px;
+  /* A fixed, viewport-relative height so the conversation scrolls inside itself
+     instead of growing under the composer (the component's flex-1 lets it grow). */
+  flex: none;
+  height: clamp(300px, 55vh, 560px);
+  min-height: 0;
 }
 .transcript [data-streamdown] {
   font-size: 13px;
@@ -1068,8 +1071,6 @@
 }
 .chat-composer {
   margin-top: auto;
-  position: sticky;
-  bottom: 12px;
   background: var(--background);
   padding-top: 12px;
 }
@@ -1079,6 +1080,36 @@
 }
 .chat-composer [data-slot="input-group"] {
   background: var(--card);
+}
+.voice-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: auto;
+  margin-left: 10px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.voice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+.voice-dot.live {
+  background: var(--bay);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(1.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-dot.live {
+    animation: none;
+  }
 }
 .chat-settings {
   display: flex;
@@ -1398,10 +1429,7 @@
     min-height: 570px;
   }
   .transcript {
-    height: 350px;
-  }
-  .chat-composer {
-    bottom: 85px;
+    height: clamp(260px, 50vh, 420px);
   }
   .chat-side .ladder {
     display: grid;
