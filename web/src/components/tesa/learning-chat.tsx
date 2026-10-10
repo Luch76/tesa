@@ -60,6 +60,25 @@ function simulationOpening(job: Job, spanish: boolean) {
       : `I need your help. This situation—${job.scn.name.toLowerCase()}—is affecting my day, and I need a clear solution. What can you do?`;
 }
 
+const READ_ALOUD_KEY = "tesa-read-aloud";
+/** "Read replies aloud" is on unless the learner turned it off. */
+function readAloudPreference() {
+  try {
+    return typeof localStorage === "undefined" || localStorage.getItem(READ_ALOUD_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+/** A voice for the chat language, preferring the regional US voice and natural-sounding ones. */
+function pickVoice(voices: SpeechSynthesisVoice[], spanish: boolean) {
+  const lang = spanish ? "es" : "en";
+  const matching = voices.filter((v) => v.lang.toLowerCase().startsWith(lang));
+  return (
+    matching.find((v) => /natural|neural|google|samantha|paulina|monica/i.test(v.name)) ??
+    matching.find((v) => v.lang === (spanish ? "es-US" : "en-US")) ??
+    matching[0]
+  );
+}
 /** Silent listening rounds (each ends after a few seconds without speech) before voice chat pauses. */
 const MAX_SILENT_ROUNDS = 4;
 
@@ -80,7 +99,7 @@ export function LearningChat({
   const [turns, setTurns] = useState<Turn[]>([]),
     [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
-    [read, setRead] = useState(false),
+    [read, setRead] = useState(readAloudPreference),
     [listening, setListening] = useState(false),
     [talking, setTalking] = useState(false),
     [scored, setScored] = useState(false),
@@ -92,6 +111,7 @@ export function LearningChat({
   const submitRef = useRef<(answer: string) => Promise<void>>(async () => {});
   const listenRef = useRef<() => void>(() => {});
   const silentRounds = useRef(0);
+  const speechId = useRef(0);
   const session = useRef("");
   const submitted = useRef("");
   const userCount = turns.filter((t) => t.role === "user").length;
@@ -105,6 +125,15 @@ export function LearningChat({
     const reaction = setTimeout(() => setReacting(false), 2200);
     return () => clearTimeout(reaction);
   }, [turns, busy]);
+  useEffect(() => {
+    // Browsers load voices lazily; asking early lets the first reply use a matching voice.
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    synth.getVoices();
+    const load = () => synth.getVoices();
+    synth.addEventListener?.("voiceschanged", load);
+    return () => synth.removeEventListener?.("voiceschanged", load);
+  }, []);
   useEffect(() => {
     session.current = crypto.randomUUID();
     setTurns([
@@ -124,34 +153,52 @@ export function LearningChat({
     };
   }, [job.id, skill, simulation, es]);
   /**
-   * Speaks a reply when "Read replies aloud" is on or a voice conversation is running,
-   * then calls `onDone`. Sentences are queued separately because Chrome stops speaking
-   * long single utterances partway through.
+   * Speaks text aloud when "Read replies aloud" is on or a voice conversation is running,
+   * then calls `onDone` exactly once, even if the browser never reports the end of speech.
    */
   function say(reply: string, onDone?: () => void) {
     const synth = window.speechSynthesis;
-    if (!(read || talkingRef.current) || !synth) {
+    if (!(read || talkingRef.current) || !synth || !reply.trim()) {
       onDone?.();
       return;
     }
-    synth.cancel();
-    const sentences = reply.match(/[^.!?¿¡]+[.!?]*\s*/g) ?? [reply];
+    const id = ++speechId.current;
+    let finished = false;
+    const done = () => {
+      if (finished || speechId.current !== id) return;
+      finished = true;
+      window.clearTimeout(watchdog);
+      setSpeaking(false);
+      onDone?.();
+    };
+    // Some browsers never fire "end"; carry on after the speech should have finished.
+    const words = reply.split(/\s+/).length;
+    const watchdog = window.setTimeout(done, words * 450 + 4000);
+    const speakNow = () => {
+      if (speechId.current !== id) return;
+      // Chrome stops long single utterances partway, so speak sentence by sentence.
+      const sentences = reply.match(/[^.!?¿¡]+[.!?]*\s*/g) ?? [reply];
+      const voice = pickVoice(synth.getVoices(), es);
+      synth.resume();
+      sentences.forEach((sentence, i) => {
+        const speech = new SpeechSynthesisUtterance(sentence.trim());
+        speech.lang = es ? "es-US" : "en-US";
+        if (voice) speech.voice = voice;
+        if (i === sentences.length - 1) {
+          speech.onend = done;
+          speech.onerror = done;
+        }
+        synth.speak(speech);
+      });
+    };
     setSpeaking(true);
-    sentences.forEach((sentence, i) => {
-      const speech = new SpeechSynthesisUtterance(sentence.trim());
-      speech.lang = es ? "es-US" : "en-US";
-      if (i === sentences.length - 1) {
-        speech.onend = () => {
-          setSpeaking(false);
-          onDone?.();
-        };
-        speech.onerror = () => {
-          setSpeaking(false);
-          onDone?.();
-        };
-      }
-      synth.speak(speech);
-    });
+    if (synth.speaking || synth.pending) {
+      // Chrome can drop speech queued right after cancel(), so give it a moment.
+      synth.cancel();
+      window.setTimeout(speakNow, 120);
+    } else {
+      speakNow();
+    }
   }
   function stop() {
     endConversation();
@@ -245,10 +292,16 @@ export function LearningChat({
     talkingRef.current = true;
     setTalking(true);
     setText("");
-    listen();
+    // Read the coach's current question aloud first, then listen. Speaking within this
+    // tap also unlocks audio in browsers (Safari) that block speech started later on.
+    const question = [...turns].reverse().find((turn) => turn.role === "assistant")?.text ?? "";
+    say(question, () => {
+      if (talkingRef.current) listenRef.current();
+    });
   }
   function endConversation() {
     talkingRef.current = false;
+    speechId.current++;
     setTalking(false);
     setListening(false);
     rec.current?.abort?.();
@@ -496,6 +549,11 @@ export function LearningChat({
                   checked={read}
                   onChange={(e) => {
                     setRead(e.target.checked);
+                    try {
+                      localStorage.setItem(READ_ALOUD_KEY, e.target.checked ? "1" : "0");
+                    } catch {
+                      /* the preference just won't be remembered */
+                    }
                     if (!e.target.checked) {
                       window.speechSynthesis?.cancel();
                       setSpeaking(false);
